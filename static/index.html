@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Staves Detection Result</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Upload and Detect Staves</h1>
+    <form id="uploadForm" action="/predict/" method="post" enctype="multipart/form-data">
+      
+      <!-- file upload -->
+      <input type="file" name="file" id="file" required>
+      
+      <!-- new: confidence threshold -->
+      <label for="conf_thresh">Model Confidence Threshold (higher threshold filters out lower confidence detections):</label>
+      <input
+        type="number"
+        id="conf_thresh"
+        name="conf_thresh"
+        value="0.25"
+        step="0.01"
+        min="0"
+        max="1"
+        required
+      >
+      
+      <!-- new: IoU threshold -->
+      <label for="iou_thresh">Model IoU Threshold (lower IOU threshold filters out more overlapping detections):</label>
+      <input
+        type="number"
+        id="iou_thresh"
+        name="iou_thresh"
+        value="0.60"
+        step="0.01"
+        min="0"
+        max="1"
+        required
+      >
+      
+      <button type="submit">Upload Image</button>
+    </form>
+
+    <h2>Detection Result:</h2>
+    <h3 id="detectionCount"></h3>
+    <img id="resultImage" alt="Detected Result">
+    <div id="tableDiv" style="margin-top:2rem;"></div>
+
+    <!-- for clearing the pandas table -->
+    <button id="clearTable" type="button" style="margin-top:1rem;">
+      Clear Table
+    </button>
+  </div>
+
+  <script>
+    const form = document.getElementById("uploadForm");
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const fileInput = document.getElementById("file");
+      if (!fileInput.files.length) {
+        alert("Please select a file.");
+        return;
+      }
+
+      alert("starting inference.")
+      // Build FormData from the entire form
+      const formData = new FormData(form);
+
+      try {
+        const response = await fetch(form.action, {
+          method: "POST",
+          body: formData
+        });
+        if (!response.ok) throw new Error("Server error " + response.status);
+
+        // Read custom header and image blob
+        const stavesCount = response.headers.get("staves-count");
+        const blob = await response.blob();
+        const imageUrl = URL.createObjectURL(blob);
+    
+        //make request to render new table
+        const tableHtml = await fetch("/table/").then(r=>r.text());
+        // Update the page
+        document.getElementById("resultImage").src = imageUrl;
+        document.getElementById("detectionCount").innerText = stavesCount + " staves detected";
+        document.getElementById("tableDiv").innerHTML = tableHtml;
+
+        //for clearing the table
+        document.getElementById("clearTable").addEventListener("click", async () => {
+          try {
+            // Tell the server to clear the DataFrame
+            const resp = await fetch("/clear_table/", { method: "POST" });
+            if (!resp.ok) throw new Error("Failed to clear table");
+
+            const tableHtml = await fetch("/table/").then(r => r.text());
+            document.getElementById("tableDiv").innerHTML = tableHtml;
+
+          } catch (err) {
+            alert("Error clearing table: " + err);
+          }
+        });
+        // cleanup
+        // document.getElementById("resultImage").onload = () => {
+        //   URL.revokeObjectURL(imageUrl);
+        // };
+      } catch (err) {
+        alert("Error: " + err);
+      }
+    });
+  </script>
+</body>
+</html>

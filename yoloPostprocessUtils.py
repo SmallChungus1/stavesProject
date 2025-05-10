@@ -30,3 +30,21 @@ def draw_detections_on_img(detection, pil_img_obj, dot_radius=10):
         )
     
     return pil_img_obj, total_detections
+
+def extract_highest_conf_bbox(bboxes, conf_scores):
+    localizer_conf_scores = np.array(conf_scores)
+    localizer_boxes = np.array(bboxes)
+
+    max_idx = np.argmax(localizer_conf_scores)
+
+    top_box = localizer_boxes[max_idx]
+    top_score = localizer_conf_scores[max_idx]
+
+    return top_box, top_score
+
+def convert_cornerWidthHeight_to_cornerCords(bbox_cords):
+    x1, y1, w, h = bbox_cords
+    x2 = x1 + w
+    y2 = y1 + h
+    
+    return (x1, y1, x2, y2)

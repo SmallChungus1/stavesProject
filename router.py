@@ -6,7 +6,7 @@ from PIL import Image
 from ultralytics import YOLO
 import numpy as np
 import cv2 
-from yoloPostprocessUtils import crop_pillow_img_from_bbox, draw_detections_on_img
+from yoloPostprocessUtils import crop_pillow_img_from_bbox, draw_detections_on_img, extract_highest_conf_bbox, convert_cornerWidthHeight_to_cornerCords
 from fastapi.responses import HTMLResponse, JSONResponse
 import torch
 import pandas as pd
@@ -54,7 +54,6 @@ async def count_staves(file: UploadFile,
     print("running through first stage localizer model")
     localizer_detection = staves_localzier_model.predict(image, half=True, max_det=1, device=device_name)
     bbox_corner_cords = localizer_detection[0].boxes.xyxy.cpu().detach().numpy()
-    bbox_corner_cords = bbox_corner_cords[0]
     cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
 
     #second stage staves counter
@@ -96,8 +95,9 @@ async def count_staves(file: UploadFile,
 
     #run image thru first stage staves localizer
     print("running through first stage localizer model")
-    localizer_detection = YOLO_OnnxRuntime(onnx_localizer_path, image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
-    bbox_corner_cords = localizer_detection[0].boxes.xyxy.cpu().detach().numpy()
+    _, localzier_boxes, localizer_conf_scores, _ = YOLO_OnnxRuntime(onnx_localizer_path, image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    highest_conf_localizer_bbox, _ = extract_highest_conf_bbox(localzier_boxes, localizer_conf_scores)
+    bbox_corner_cords = highest_conf_localizer_bbox[0].cpu().detach().numpy()
     bbox_corner_cords = bbox_corner_cords[0]
     cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
 

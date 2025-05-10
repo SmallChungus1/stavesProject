@@ -25,6 +25,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 #load model
 staves_localzier_model = YOLO("models/localizerModel.pt")
 staves_counter_model = YOLO("models/counterModel.pt")
+onnx_localizer_path = "models/localizerModel.onnx"
+onnx_counter_path = ""
 
 #create pandas table to track inference results
 table_df = pd.DataFrame(columns=["img_name", "count"])
@@ -54,6 +56,7 @@ async def count_staves(file: UploadFile,
     print("running through first stage localizer model")
     localizer_detection = staves_localzier_model.predict(image, half=True, max_det=1, device=device_name)
     bbox_corner_cords = localizer_detection[0].boxes.xyxy.cpu().detach().numpy()
+    bbox_corner_cords = bbox_corner_cords[0]
     cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
 
     #second stage staves counter
@@ -90,30 +93,30 @@ async def count_staves(file: UploadFile,
     image = Image.open(image_stream)
     image.load()
 
-    onnx_localizer_path = ""
-    onnx_counter_path = ""
-
     #run image thru first stage staves localizer
     print("running through first stage localizer model")
-    _, localzier_boxes, localizer_conf_scores, _ = YOLO_OnnxRuntime(onnx_localizer_path, image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    localizer_results = YOLO_OnnxRuntime(onnx_localizer_path, image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    _, localzier_boxes, localizer_conf_scores, _ = localizer_results.main()
     highest_conf_localizer_bbox, _ = extract_highest_conf_bbox(localzier_boxes, localizer_conf_scores)
-    bbox_corner_cords = highest_conf_localizer_bbox[0].cpu().detach().numpy()
-    bbox_corner_cords = bbox_corner_cords[0]
+    bbox_corner_cords = convert_cornerWidthHeight_to_cornerCords(highest_conf_localizer_bbox.tolist())
     cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
-
+    #testing
+    annotated_img = cropped_image
+    staves_count = 0
+    
     #second stage staves counter
-    print("running through second stage staves counter model")
-    counter_detections = staves_counter_model(cropped_image, half=True, max_det=9999, device=device_name, conf=conf_thresh, iou=iou_thresh)
-    counter_detections = counter_detections[0]
+    # print("running through second stage staves counter model")
+    # counter_detections = staves_counter_model(cropped_image, half=True, max_det=9999, device=device_name, conf=conf_thresh, iou=iou_thresh)
+    # counter_detections = counter_detections[0]
 
-    annotated_img, staves_count = draw_detections_on_img(counter_detections, cropped_image)
+    # annotated_img, staves_count = draw_detections_on_img(counter_detections, cropped_image)
 
-    #store results to pandas table
-    img_name = file.filename
-    if img_name in table_df["img_name"].values:
-        table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
-    else:
-        table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
+    # #store results to pandas table
+    # img_name = file.filename
+    # if img_name in table_df["img_name"].values:
+    #     table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
+    # else:
+    #     table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
     
     #final img to buffer, send back to index page
     output_buffer = io.BytesIO()

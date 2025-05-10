@@ -23,10 +23,10 @@ app = FastAPI()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 #load model
-staves_localzier_model = YOLO("models/localizerModel.pt")
-staves_counter_model = YOLO("models/counterModel.pt")
+staves_localzier_model_path = "models/localizerModel.pt"
+staves_counter_model_path = "models/counterModel.pt"
 onnx_localizer_path = "models/localizerModel.onnx"
-onnx_counter_path = ""
+onnx_counter_path = "models/counterModel.onnx"
 
 #create pandas table to track inference results
 table_df = pd.DataFrame(columns=["img_name", "count"])
@@ -44,7 +44,9 @@ async def read_root():
 async def count_staves(file: UploadFile,
                         conf_thresh: float = Form(0.25),
                         iou_thresh: float = Form(0.60)):
-
+    
+    staves_localzier_model = YOLO(staves_localzier_model_path)
+    staves_counter_model = YOLO(staves_counter_model_path)
     global table_df
     image_bytes = await file.read()
     #this is needed for pillow
@@ -100,27 +102,26 @@ async def count_staves(file: UploadFile,
     highest_conf_localizer_bbox, _ = extract_highest_conf_bbox(localzier_boxes, localizer_conf_scores)
     bbox_corner_cords = convert_cornerWidthHeight_to_cornerCords(highest_conf_localizer_bbox.tolist())
     cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
-    #testing
-    annotated_img = cropped_image
-    staves_count = 0
     
     #second stage staves counter
-    # print("running through second stage staves counter model")
-    # counter_detections = staves_counter_model(cropped_image, half=True, max_det=9999, device=device_name, conf=conf_thresh, iou=iou_thresh)
-    # counter_detections = counter_detections[0]
-
-    # annotated_img, staves_count = draw_detections_on_img(counter_detections, cropped_image)
-
+    print("running through second stage staves counter model")
+    counter_results = YOLO_OnnxRuntime(onnx_counter_path, cropped_image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    counter_annotated_arr, counter_boxes, _, _ = counter_results.main()
+    staves_count = len(counter_boxes)
+    
+    #counter_results.main() returns numpy, need to conver to pil for further processing
+    counter_annotated_img = Image.fromarray(counter_annotated_arr)
+    
     # #store results to pandas table
-    # img_name = file.filename
-    # if img_name in table_df["img_name"].values:
-    #     table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
-    # else:
-    #     table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
+    img_name = file.filename
+    if img_name in table_df["img_name"].values:
+        table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
+    else:
+        table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
     
     #final img to buffer, send back to index page
     output_buffer = io.BytesIO()
-    annotated_img.save(output_buffer, format="JPEG")
+    counter_annotated_img.save(output_buffer, format="JPEG")
     output_buffer.seek(0)
     
     return StreamingResponse(output_buffer, media_type="image/jpeg", headers={"staves-count": str(staves_count)})

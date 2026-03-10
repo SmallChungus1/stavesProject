@@ -58,3 +58,4 @@ ultralytics
 ultralytics-thop
 urllib3
 uvicorn
+roboflow

@@ -3,19 +3,22 @@ FROM python:3.12-slim
 WORKDIR /app
 
 #need this so docker container doesn't run into libGL issues
-RUN apt-get update && apt-get install ffmpeg libsm6 libxext6  -y
+RUN apt-get update && apt-get install ffmpeg libsm6 libxext6 -y
 
-COPY requirements.txt .
+RUN pip install --no-cache-dir \
+    onnxruntime \
+    fastapi \
+    "uvicorn[standard]" \
+    numpy \
+    opencv-python-headless \
+    python-dotenv \
+    pillow \
+    python-multipart \
+    pandas
 
-#change line below for other cuda-pytorch versions
-#RUN pip install --no-cache-dir torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu118
-RUN pip install --no-cache-dir torch torchvision torchaudio
-#removed pytorch-cuda versions from requirements.txt
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY router.py yoloPostprocessUtils.py ./
+COPY router.py yoloPostprocessUtils.py yolo_onnx.py ./
 COPY static/ ./static/
-COPY models/ ./models/
+COPY weights/ ./models/
 
 EXPOSE 8000
 

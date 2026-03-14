@@ -8,6 +8,7 @@ __pycache__
 settings.json
 models/*
 .env
+CLAUDE.md
 weights/*
 runs/*
 finetune_dataset/stave_count/ft2imgs/images/*

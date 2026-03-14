@@ -1,32 +1,37 @@
 from fastapi import FastAPI, UploadFile, File, Form
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
+import glob
 import io
-from PIL import Image
-from ultralytics import YOLO
-import numpy as np
-import cv2 
-from yoloPostprocessUtils import crop_pillow_img_from_bbox, draw_detections_on_img, extract_highest_conf_bbox, convert_cornerWidthHeight_to_cornerCords
+import os
+import re
+from PIL import Image, ImageOps
+from yoloPostprocessUtils import crop_pillow_img_from_bbox, extract_highest_conf_bbox, convert_cornerWidthHeight_to_cornerCords
 from fastapi.responses import HTMLResponse, JSONResponse
-import torch
 import pandas as pd
-#entry point for onnx inferences
 from yolo_onnx import YOLO_OnnxRuntime
 
 
-device_name = "cuda" if torch.cuda.is_available() else "mps" if  torch.backends.mps.is_available() else "cpu"
-print(f"using device {device_name}")
-device = torch.device(device_name)
+def find_latest_onnx(directory: str, mode: str) -> str:
+    pattern = os.path.join(directory, f"staves_detector_{mode}_onnx_v*.onnx")
+    matches = glob.glob(pattern)
+    if not matches:
+        raise FileNotFoundError(f"No ONNX model found for mode '{mode}' in '{directory}'")
+    # extract version number from filename and return the highest
+    def version_num(path):
+        m = re.search(r"_v(\d+)\.onnx$", path)
+        return int(m.group(1)) if m else -1
+    return max(matches, key=version_num)
+
 
 app = FastAPI()
 #mount static folder, for acess to all things inside static folder
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-#load model
-staves_localzier_model_path = "models/localizerModel.pt"
-staves_counter_model_path = "models/counterModel.pt"
-onnx_localizer_path = "models/localizerModel.onnx"
-onnx_counter_path = "models/counterModel.onnx"
+onnx_localizer_path = find_latest_onnx("models", "localizer")
+onnx_counter_path   = find_latest_onnx("models", "finetune")
+print(f"Localizer model: {onnx_localizer_path}")
+print(f"Counter model:   {onnx_counter_path}")
 
 #create pandas table to track inference results
 table_df = pd.DataFrame(columns=["img_name", "count"])
@@ -40,48 +45,6 @@ async def read_root():
         html_content = f.read()
     return HTMLResponse(content=html_content)
 
-@app.post("/predict/")
-async def count_staves(file: UploadFile,
-                        conf_thresh: float = Form(0.25),
-                        iou_thresh: float = Form(0.60)):
-    
-    staves_localzier_model = YOLO(staves_localzier_model_path)
-    staves_counter_model = YOLO(staves_counter_model_path)
-    global table_df
-    image_bytes = await file.read()
-    #this is needed for pillow
-    image_stream = io.BytesIO(image_bytes)
-    image = Image.open(image_stream)
-    image.load()
-
-    #run image thru first stage staves localizer
-    print("running through first stage localizer model")
-    localizer_detection = staves_localzier_model.predict(image, half=True, max_det=1, device=device_name)
-    bbox_corner_cords = localizer_detection[0].boxes.xyxy.cpu().detach().numpy()
-    bbox_corner_cords = bbox_corner_cords[0]
-    cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
-
-    #second stage staves counter
-    print("running through second stage staves counter model")
-    counter_detections = staves_counter_model(cropped_image, half=True, max_det=9999, device=device_name, conf=conf_thresh, iou=iou_thresh)
-    counter_detections = counter_detections[0]
-
-    annotated_img, staves_count = draw_detections_on_img(counter_detections, cropped_image)
-
-    #store results to pandas table
-    img_name = file.filename
-    if img_name in table_df["img_name"].values:
-        table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
-    else:
-        table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
-    
-    #final img to buffer, send back to index page
-    output_buffer = io.BytesIO()
-    annotated_img.save(output_buffer, format="JPEG")
-    output_buffer.seek(0)
-    
-    return StreamingResponse(output_buffer, media_type="image/jpeg", headers={"staves-count": str(staves_count)})
-
 #running prediction with ONNXRuntime
 @app.post("/predictOnnx/")
 async def count_staves(file: UploadFile,
@@ -94,6 +57,7 @@ async def count_staves(file: UploadFile,
     image_stream = io.BytesIO(image_bytes)
     image = Image.open(image_stream)
     image.load()
+    image = ImageOps.exif_transpose(image)
 
     #run image thru first stage staves localizer
     print("running through first stage localizer model")
@@ -117,7 +81,7 @@ async def count_staves(file: UploadFile,
     if img_name in table_df["img_name"].values:
         table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
     else:
-        table_df = table_df._append({"img_name": img_name, "count": staves_count}, ignore_index=True)
+        table_df = pd.concat([table_df, pd.DataFrame([{"img_name": img_name, "count": staves_count}])], ignore_index=True)
     
     #final img to buffer, send back to index page
     output_buffer = io.BytesIO()

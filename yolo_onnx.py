@@ -1,52 +1,17 @@
 import cv2
 import numpy as np
-from ultralytics import YOLO
-from ultralytics.utils import ASSETS, YAML
-from ultralytics.utils.checks import check_requirements, check_yaml
 from typing import List, Tuple, Union
 from PIL import Image
 import onnxruntime as ort
 
 class YOLO_OnnxRuntime:
-    """
-    YOLOv8 object detection model class for handling inference and visualization.
-
-    This class provides functionality to load a YOLOv8 ONNX model, perform inference on images,
-    and visualize the detection results.
-
-    Attributes:
-        onnx_model (str): Path to the ONNX model file.
-        input_image (str): Path to the input image file.
-        confidence_thres (float): Confidence threshold for filtering detections.
-        iou_thres (float): IoU threshold for non-maximum suppression.
-        classes (List[str]): List of class names from the COCO dataset.
-        color_palette (np.ndarray): Random color palette for visualizing different classes.
-        input_width (int): Width dimension of the model input.
-        input_height (int): Height dimension of the model input.
-        img (np.ndarray): The loaded input image.
-        img_height (int): Height of the input image.
-        img_width (int): Width of the input image.
-    """
-
     def __init__(self, onnx_model: str, input_image: Union[str, Image.Image], confidence_thres: float, iou_thres: float):
-        """
-        Initialize an instance of the YOLOv8 class.
-
-        Args:
-            onnx_model (str): Path to the ONNX model.
-            input_image (str): Path to the input image.
-            confidence_thres (float): Confidence threshold for filtering detections.
-            iou_thres (float): IoU threshold for non-maximum suppression.
-        """
         self.onnx_model = onnx_model
         self.input_image = input_image
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
 
-        # Load the class names from the COCO dataset
-        self.classes = YAML.load(check_yaml("coco8.yaml"))["names"]
-
-        # Generate a color palette for the classes
+        self.classes = ["stave"]
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
 
     def letterbox(self, img: np.ndarray, new_shape: Tuple[int, int] = (640, 640)) -> Tuple[np.ndarray, Tuple[int, int]]:
@@ -268,7 +233,7 @@ class YOLO_OnnxRuntime:
             (np.ndarray): The output image with drawn detections.
         """
         # Create an inference session using the ONNX model and specify execution providers
-        session = ort.InferenceSession(self.onnx_model, providers=["CUDAExecutionProvider", "CPUExecutionProvider"])
+        session = ort.InferenceSession(self.onnx_model, providers=["CPUExecutionProvider"])
 
         # Get the model inputs
         model_inputs = session.get_inputs()

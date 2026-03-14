@@ -2,112 +2,235 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Staves Detection Result</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stave Detection App</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-  <div class="container">
-    <h1>Upload and Detect Staves ></h1>
-    <form id="uploadForm" action="/predictOnnx/" method="post" enctype="multipart/form-data">
-      
-      <!-- file upload -->
-      <input type="file" name="file" id="file" required>
-      
-      <!-- new: confidence threshold -->
-      <label for="conf_thresh">Model Confidence Threshold (higher threshold filters out lower confidence detections):</label>
-      <input
-        type="number"
-        id="conf_thresh"
-        name="conf_thresh"
-        value="0.25"
-        step="0.01"
-        min="0"
-        max="1"
-        required
-      >
-      
-      <!-- new: IoU threshold -->
-      <label for="iou_thresh">Model IoU Threshold (lower IOU threshold filters out more overlapping detections):</label>
-      <input
-        type="number"
-        id="iou_thresh"
-        name="iou_thresh"
-        value="0.60"
-        step="0.01"
-        min="0"
-        max="1"
-        required
-      >
-      
-      <button type="submit">Upload Image</button>
-    </form>
 
-    <h2>Detection Result:</h2>
-    <h3 id="detectionCount"></h3>
-    <img id="resultImage" alt="Detected Result">
-    <div id="tableDiv" style="margin-top:2rem;"></div>
+  <!-- ── Header ─────────────────────────────────────────────────── -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div>
+          <h1 class="header-title">Stave Detection</h1>
+        </div>
+      </div>
+    </div>
+  </header>
 
-    <!-- for clearing the pandas table -->
-    <button id="clearTable" type="button" style="margin-top:1rem;">
-      Clear Table
-    </button>
-  </div>
+  <main class="main-content">
+
+    <!-- ── Upload Card ────────────────────────────────────────────── -->
+    <section class="card">
+      <p class="card-title">Detection Input</p>
+
+      <form id="uploadForm" action="/predictOnnx/" method="post" enctype="multipart/form-data">
+        <input type="file" name="file" id="file" accept="image/*" required style="display:none">
+
+        <div class="drop-zone" id="dropZone">
+          <div class="drop-icon">↑</div>
+          <p class="drop-text">Drag &amp; drop image here</p>
+          <p class="drop-sub">or <span class="drop-link">click to browse</span></p>
+          <p class="drop-filename" id="selectedFilename"></p>
+        </div>
+
+        <details class="advanced-settings">
+          <summary class="advanced-toggle">Advanced Settings</summary>
+          <div class="advanced-body">
+            <div class="slider-group">
+              <div class="slider-row">
+                <label class="slider-label" for="conf_thresh">Confidence Threshold</label>
+                <span class="slider-val" id="confVal">0.25</span>
+              </div>
+              <input type="range" class="slider" id="conf_thresh" name="conf_thresh"
+                     min="0" max="1" step="0.01" value="0.25">
+              <p class="slider-hint">Higher → fewer, more confident detections</p>
+            </div>
+
+            <div class="slider-group">
+              <div class="slider-row">
+                <label class="slider-label" for="iou_thresh">IoU Threshold</label>
+                <span class="slider-val" id="iouVal">0.60</span>
+              </div>
+              <input type="range" class="slider" id="iou_thresh" name="iou_thresh"
+                     min="0" max="1" step="0.01" value="0.60">
+              <p class="slider-hint">Lower → suppresses more overlapping boxes</p>
+            </div>
+          </div>
+        </details>
+
+        <button type="submit" class="btn-primary" id="submitBtn">
+          <span id="btnText">Run Detection</span>
+          <span class="spinner" id="btnSpinner" style="display:none"></span>
+        </button>
+      </form>
+    </section>
+
+    <!-- ── Results Card (hidden until first run) ──────────────────── -->
+    <section class="card results-card" id="resultsCard" style="display:none">
+      <p class="card-title">Detection Results</p>
+
+      <div class="stats-row">
+        <div class="stat-block">
+          <span class="stat-number stat-green" id="statCount">—</span>
+          <span class="stat-label">staves detected</span>
+        </div>
+        <div class="stat-divider"></div>
+        <div class="stat-block">
+          <span class="stat-number stat-blue" id="statTime">—</span>
+          <span class="stat-label">total time (ms)</span>
+        </div>
+      </div>
+
+      <div class="result-image-wrap">
+        <img id="resultImage" alt="Detection result">
+      </div>
+    </section>
+
+    <!-- ── Table Card ─────────────────────────────────────────────── -->
+    <section class="card">
+      <div class="table-header">
+        <p class="card-title" style="margin:0">Detection Log</p>
+        <div class="table-actions">
+          <button class="btn-secondary" id="downloadCSV">↓ CSV</button>
+          <button class="btn-secondary btn-danger" id="clearTable">Clear</button>
+        </div>
+      </div>
+      <div class="table-wrap" id="tableDiv">
+        <p class="table-empty">No detections yet.</p>
+      </div>
+    </section>
+
+  </main>
 
   <script>
-    const form = document.getElementById("uploadForm");
-    form.addEventListener("submit", async (e) => {
+    // ── Slider fill + live value ──────────────────────────────────────
+    function updateSlider(slider, valEl) {
+      const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
+      slider.style.background =
+        `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+      valEl.textContent = parseFloat(slider.value).toFixed(2);
+    }
+
+    const confSlider = document.getElementById('conf_thresh');
+    const iouSlider  = document.getElementById('iou_thresh');
+    const confVal    = document.getElementById('confVal');
+    const iouVal     = document.getElementById('iouVal');
+
+    updateSlider(confSlider, confVal);
+    updateSlider(iouSlider, iouVal);
+    confSlider.addEventListener('input', () => updateSlider(confSlider, confVal));
+    iouSlider.addEventListener('input',  () => updateSlider(iouSlider, iouVal));
+
+    // ── Drag & drop / file picker ─────────────────────────────────────
+    const dropZone  = document.getElementById('dropZone');
+    const fileInput = document.getElementById('file');
+    const fileLabel = document.getElementById('selectedFilename');
+
+    dropZone.addEventListener('click', () => fileInput.click());
+
+    dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
+      dropZone.classList.add('drag-over');
+    });
+    ['dragleave', 'dragend'].forEach(ev =>
+      dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'))
+    );
+    dropZone.addEventListener('drop', (e) => {
+      e.preventDefault();
+      dropZone.classList.remove('drag-over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files.length) setFile(fileInput.files[0]);
+    });
 
-      const fileInput = document.getElementById("file");
-      if (!fileInput.files.length) {
-        alert("Please select a file.");
-        return;
-      }
+    function setFile(f) {
+      const dt = new DataTransfer();
+      dt.items.add(f);
+      fileInput.files = dt.files;
+      fileLabel.textContent = f.name;
+      dropZone.classList.add('has-file');
+    }
 
-      alert("starting inference.")
-      // Build FormData from the entire form
-      const formData = new FormData(form);
+    // ── Form submit ───────────────────────────────────────────────────
+    const form       = document.getElementById('uploadForm');
+    const submitBtn  = document.getElementById('submitBtn');
+    const btnText    = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
 
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!fileInput.files.length) { alert('Please select an image.'); return; }
+
+      submitBtn.disabled     = true;
+      btnText.textContent    = 'Running…';
+      btnSpinner.style.display = 'inline-block';
+
+      const t0 = performance.now();
       try {
-        const response = await fetch(form.action, {
-          method: "POST",
-          body: formData
-        });
-        if (!response.ok) throw new Error("Server error " + response.status);
+        const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
+        if (!res.ok) throw new Error('Server returned ' + res.status);
 
-        // Read custom header and image blob
-        const stavesCount = response.headers.get("staves-count");
-        const blob = await response.blob();
-        const imageUrl = URL.createObjectURL(blob);
-    
-        //make request to render new table
-        const tableHtml = await fetch("/table/").then(r=>r.text());
-        // Update the page
-        document.getElementById("resultImage").src = imageUrl;
-        document.getElementById("detectionCount").innerText = stavesCount + " staves detected";
-        document.getElementById("tableDiv").innerHTML = tableHtml;
+        const elapsed     = Math.round(performance.now() - t0);
+        const stavesCount = res.headers.get('staves-count');
+        const imageUrl    = URL.createObjectURL(await res.blob());
 
-        //for clearing the table
-        document.getElementById("clearTable").addEventListener("click", async () => {
-          try {
-            // Tell the server to clear the DataFrame
-            const resp = await fetch("/clear_table/", { method: "POST" });
-            if (!resp.ok) throw new Error("Failed to clear table");
+        document.getElementById('statCount').textContent = stavesCount;
+        document.getElementById('statTime').textContent  = elapsed;
+        document.getElementById('resultImage').src       = imageUrl;
 
-            const tableHtml = await fetch("/table/").then(r => r.text());
-            document.getElementById("tableDiv").innerHTML = tableHtml;
+        const card = document.getElementById('resultsCard');
+        card.style.display = 'block';
+        card.offsetHeight;                   // force reflow for transition
+        card.classList.add('visible');
+        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 
-          } catch (err) {
-            alert("Error clearing table: " + err);
-          }
-        });
-        // cleanup
-        // document.getElementById("resultImage").onload = () => {
-        //   URL.revokeObjectURL(imageUrl);
-        // };
+        await refreshTable();
       } catch (err) {
-        alert("Error: " + err);
+        alert('Error: ' + err.message);
+      } finally {
+        submitBtn.disabled     = false;
+        btnText.textContent    = 'Run Detection';
+        btnSpinner.style.display = 'none';
       }
+    });
+
+    // ── Table helpers ─────────────────────────────────────────────────
+    async function refreshTable() {
+      const html = await fetch('/table/').then(r => r.text());
+      const wrap = document.getElementById('tableDiv');
+      wrap.innerHTML = html.includes('<table')
+        ? html
+        : '<p class="table-empty">No detections yet.</p>';
+    }
+
+    document.getElementById('clearTable').addEventListener('click', async () => {
+      try {
+        const r = await fetch('/clear_table/', { method: 'POST' });
+        if (!r.ok) throw new Error('Failed to clear');
+        await refreshTable();
+      } catch (err) { alert('Error: ' + err.message); }
+    });
+
+    document.getElementById('downloadCSV').addEventListener('click', () => {
+      const table = document.querySelector('#tableDiv table');
+      if (!table) { alert('No data to download.'); return; }
+      const csv = Array.from(table.querySelectorAll('tr'))
+        .map(row => Array.from(row.querySelectorAll('th, td'))
+          .map(c => `"${c.textContent.trim()}"`)
+          .join(','))
+        .join('\n');
+      const a = Object.assign(document.createElement('a'), {
+        href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        download: 'stave_detections.csv'
+      });
+      a.click();
     });
   </script>
 </body>

@@ -17,7 +17,6 @@ on:
     paths-ignore:
       - '**.md'
       - 'docs/**'
-      - 'tests/fixtures/**'
 
 env:
   OCI_REGION:         phx
@@ -41,14 +40,14 @@ jobs:
         run: pip install mlflow python-dotenv
 
       - name: Download counter model
-        run: python download_registered_model.py --mode finetune
+        run: python scripts/download_registered_model.py --mode finetune
         env:
           MLFLOW_TRACKING_URI:      ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}
           MLFLOW_TRACKING_PASSWORD: ${{ secrets.MLFLOW_TRACKING_PASSWORD }}
 
       - name: Download localizer model
-        run: python download_registered_model.py --mode localizer
+        run: python scripts/download_registered_model.py --mode localizer
         env:
           MLFLOW_TRACKING_URI:      ${{ secrets.MLFLOW_TRACKING_URI }}
           MLFLOW_TRACKING_USERNAME: ${{ secrets.MLFLOW_TRACKING_USERNAME }}

@@ -2,9 +2,9 @@
 Downloads a registered ONNX model from the MLflow Model Registry (hosted on Dagshub).
 
 Usage:
-    uv run python download_registered_model.py --mode finetune
-    uv run python download_registered_model.py --mode localizer --version 2
-    uv run python download_registered_model.py --mode finetune --out models/counterModel.onnx
+    uv run python scripts/download_registered_model.py --mode finetune
+    uv run python scripts/download_registered_model.py --mode localizer --version 2
+    uv run python scripts/download_registered_model.py --mode finetune --out models/counterModel.onnx
 
 Args:
     --mode     : one of "pretrain", "finetune", "localizer"

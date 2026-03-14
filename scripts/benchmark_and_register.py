@@ -4,7 +4,7 @@ logs all metrics and artifacts to MLflow on Dagshub, and registers the ONNX
 model to the MLflow Model Registry for manual promotion review.
 
 Usage:
-    uv run python benchmark_and_register.py --model yolov8n --mode finetune
+    uv run python scripts/benchmark_and_register.py --model yolov8n --mode finetune
 
 Args:
     --model : YOLO model stem name, e.g. "yolov8n", "yolo11m"

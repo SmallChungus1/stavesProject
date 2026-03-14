@@ -16,7 +16,7 @@
     <div class="header-inner">
       <div class="header-brand">
         <div>
-          <h1 class="header-title">Stave Detection</h1>
+          <h1 class="header-title">Stave Detection App</h1>
         </div>
       </div>
     </div>
@@ -29,11 +29,11 @@
       <p class="card-title">Detection Input</p>
 
       <form id="uploadForm" action="/predictOnnx/" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" id="file" accept="image/*" required style="display:none">
+        <input type="file" name="file" id="file" accept="image/*" multiple style="display:none">
 
         <div class="drop-zone" id="dropZone">
           <div class="drop-icon">↑</div>
-          <p class="drop-text">Drag &amp; drop image here</p>
+          <p class="drop-text">Drag &amp; drop images here</p>
           <p class="drop-sub">or <span class="drop-link">click to browse</span></p>
           <p class="drop-filename" id="selectedFilename"></p>
         </div>
@@ -44,10 +44,10 @@
             <div class="slider-group">
               <div class="slider-row">
                 <label class="slider-label" for="conf_thresh">Confidence Threshold</label>
-                <span class="slider-val" id="confVal">0.25</span>
+                <span class="slider-val" id="confVal">0.50</span>
               </div>
               <input type="range" class="slider" id="conf_thresh" name="conf_thresh"
-                     min="0" max="1" step="0.01" value="0.25">
+                     min="0" max="1" step="0.01" value="0.50">
               <p class="slider-hint">Higher → fewer, more confident detections</p>
             </div>
 
@@ -63,37 +63,38 @@
           </div>
         </details>
 
-        <button type="submit" class="btn-primary" id="submitBtn">
-          <span id="btnText">Run Detection</span>
-          <span class="spinner" id="btnSpinner" style="display:none"></span>
-        </button>
+        <!-- Progress (hidden until processing starts) -->
+        <div class="progress-section" id="progressSection" style="display:none">
+          <p class="progress-status" id="progressStatus"></p>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="progressBar"></div>
+          </div>
+        </div>
+
+        <div class="form-btns">
+          <button type="submit" class="btn-primary" id="submitBtn">
+            <span id="btnText">Run Detection</span>
+            <span class="spinner" id="btnSpinner" style="display:none"></span>
+          </button>
+          <button type="button" class="btn-secondary btn-cancel" id="cancelBtn" style="display:none">
+            Cancel
+          </button>
+        </div>
       </form>
     </section>
 
-    <!-- ── Results Card (hidden until first run) ──────────────────── -->
-    <section class="card results-card" id="resultsCard" style="display:none">
-      <p class="card-title">Detection Results</p>
-
-      <div class="stats-row">
-        <div class="stat-block">
-          <span class="stat-number stat-green" id="statCount">—</span>
-          <span class="stat-label">staves detected</span>
-        </div>
-        <div class="stat-divider"></div>
-        <div class="stat-block">
-          <span class="stat-number stat-blue" id="statTime">—</span>
-          <span class="stat-label">total time (ms)</span>
-        </div>
+    <!-- ── Results Grid (hidden until first run) ───────────────────── -->
+    <section class="card results-section" id="resultsSection" style="display:none">
+      <div class="section-header">
+        <p class="card-title" style="margin:0">Detection Results</p>
+        <button class="btn-secondary" id="downloadAll">↓ Download All</button>
       </div>
-
-      <div class="result-image-wrap">
-        <img id="resultImage" alt="Detection result">
-      </div>
+      <div class="results-grid" id="resultsGrid"></div>
     </section>
 
     <!-- ── Table Card ─────────────────────────────────────────────── -->
     <section class="card">
-      <div class="table-header">
+      <div class="section-header">
         <p class="card-title" style="margin:0">Detection Log</p>
         <div class="table-actions">
           <button class="btn-secondary" id="downloadCSV">↓ CSV</button>
@@ -107,8 +108,31 @@
 
   </main>
 
+  <!-- ── Lightbox ───────────────────────────────────────────────── -->
+  <div class="lightbox" id="lightbox">
+    <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
+    <div class="lightbox-inner">
+      <div class="lightbox-topbar">
+        <span class="lightbox-filename" id="lightboxFilename"></span>
+        <span class="lightbox-badge" id="lightboxBadge"></span>
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close">✕</button>
+      </div>
+      <div class="lightbox-body">
+        <button class="lightbox-arrow lightbox-prev" id="lightboxPrev" aria-label="Previous">‹</button>
+        <img class="lightbox-img" id="lightboxImg" alt="">
+        <button class="lightbox-arrow lightbox-next" id="lightboxNext" aria-label="Next">›</button>
+      </div>
+    </div>
+  </div>
+
   <script>
-    // ── Slider fill + live value ──────────────────────────────────────
+    // ── State ─────────────────────────────────────────────────────
+    let selectedFiles   = [];
+    let results         = [];   // { filename, blobUrl, count }
+    let cancelRequested = false;
+    let lightboxIdx     = 0;
+
+    // ── Sliders ───────────────────────────────────────────────────
     function updateSlider(slider, valEl) {
       const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
       slider.style.background =
@@ -126,7 +150,7 @@
     confSlider.addEventListener('input', () => updateSlider(confSlider, confVal));
     iouSlider.addEventListener('input',  () => updateSlider(iouSlider, iouVal));
 
-    // ── Drag & drop / file picker ─────────────────────────────────────
+    // ── Drop zone ─────────────────────────────────────────────────
     const dropZone  = document.getElementById('dropZone');
     const fileInput = document.getElementById('file');
     const fileLabel = document.getElementById('selectedFilename');
@@ -143,65 +167,238 @@
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      const f = e.dataTransfer.files[0];
-      if (f) setFile(f);
+      setFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
     });
     fileInput.addEventListener('change', () => {
-      if (fileInput.files.length) setFile(fileInput.files[0]);
+      if (fileInput.files.length) setFiles(Array.from(fileInput.files));
     });
 
-    function setFile(f) {
-      const dt = new DataTransfer();
-      dt.items.add(f);
-      fileInput.files = dt.files;
-      fileLabel.textContent = f.name;
+    function setFiles(files) {
+      if (!files.length) return;
+      selectedFiles = files;
+      fileLabel.textContent = files.length === 1
+        ? files[0].name
+        : `${files.length} images selected`;
       dropZone.classList.add('has-file');
     }
 
-    // ── Form submit ───────────────────────────────────────────────────
-    const form       = document.getElementById('uploadForm');
-    const submitBtn  = document.getElementById('submitBtn');
-    const btnText    = document.getElementById('btnText');
-    const btnSpinner = document.getElementById('btnSpinner');
+    // ── Form submit (sequential batch) ────────────────────────────
+    const form            = document.getElementById('uploadForm');
+    const submitBtn       = document.getElementById('submitBtn');
+    const cancelBtn       = document.getElementById('cancelBtn');
+    const btnText         = document.getElementById('btnText');
+    const btnSpinner      = document.getElementById('btnSpinner');
+    const progressSection = document.getElementById('progressSection');
+    const progressStatus  = document.getElementById('progressStatus');
+    const progressBar     = document.getElementById('progressBar');
+    const resultsSection  = document.getElementById('resultsSection');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!fileInput.files.length) { alert('Please select an image.'); return; }
+      if (!selectedFiles.length) { alert('Please select at least one image.'); return; }
 
-      submitBtn.disabled     = true;
-      btnText.textContent    = 'Running…';
+      cancelRequested       = false;
+      submitBtn.disabled    = true;
+      cancelBtn.style.display  = 'inline-flex';
+      cancelBtn.disabled    = false;
+      cancelBtn.textContent = 'Cancel';
+      btnText.textContent   = 'Running…';
       btnSpinner.style.display = 'inline-block';
+      progressSection.style.display = 'block';
+      progressBar.style.width = '0%';
+      resultsSection.style.display = 'block';
 
-      const t0 = performance.now();
-      try {
-        const res = await fetch(form.action, { method: 'POST', body: new FormData(form) });
-        if (!res.ok) throw new Error('Server returned ' + res.status);
+      const total      = selectedFiles.length;
+      const confThresh = confSlider.value;
+      const iouThresh  = iouSlider.value;
 
-        const elapsed     = Math.round(performance.now() - t0);
-        const stavesCount = res.headers.get('staves-count');
-        const imageUrl    = URL.createObjectURL(await res.blob());
+      for (let i = 0; i < total; i++) {
+        if (cancelRequested) break;
 
-        document.getElementById('statCount').textContent = stavesCount;
-        document.getElementById('statTime').textContent  = elapsed;
-        document.getElementById('resultImage').src       = imageUrl;
+        const file = selectedFiles[i];
+        progressStatus.textContent =
+          `Processing image ${i + 1} of ${total} — ${file.name}`;
+        progressBar.style.width = `${(i / total) * 100}%`;
 
-        const card = document.getElementById('resultsCard');
-        card.style.display = 'block';
-        card.offsetHeight;                   // force reflow for transition
-        card.classList.add('visible');
-        card.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        try {
+          const fd = new FormData();
+          fd.append('file', file);
+          fd.append('conf_thresh', confThresh);
+          fd.append('iou_thresh',  iouThresh);
 
-        await refreshTable();
-      } catch (err) {
-        alert('Error: ' + err.message);
-      } finally {
-        submitBtn.disabled     = false;
-        btnText.textContent    = 'Run Detection';
-        btnSpinner.style.display = 'none';
+          const res = await fetch(form.action, { method: 'POST', body: fd });
+          if (!res.ok) throw new Error(`Server error ${res.status} on ${file.name}`);
+
+          const count   = parseInt(res.headers.get('staves-count'), 10);
+          const blobUrl = URL.createObjectURL(await res.blob());
+
+          const existingIdx = results.findIndex(r => r.filename === file.name);
+          if (existingIdx !== -1) {
+            results[existingIdx] = { filename: file.name, blobUrl, count };
+            replaceResultCard(file.name, blobUrl, count, existingIdx);
+          } else {
+            results.push({ filename: file.name, blobUrl, count });
+            addResultCard(file.name, blobUrl, count, results.length - 1);
+          }
+
+          progressBar.style.width = `${((i + 1) / total) * 100}%`;
+        } catch (err) {
+          console.error(err);
+          progressStatus.textContent = `Error on ${file.name}: ${err.message}`;
+        }
       }
+
+      progressStatus.textContent = cancelRequested
+        ? `Cancelled — processed ${results.length} image(s)`
+        : `Done — ${total} image(s) processed`;
+
+      submitBtn.disabled       = false;
+      btnText.textContent      = 'Run Detection';
+      btnSpinner.style.display = 'none';
+      cancelBtn.style.display  = 'none';
+
+      await refreshTable();
     });
 
-    // ── Table helpers ─────────────────────────────────────────────────
+    cancelBtn.addEventListener('click', () => {
+      cancelRequested       = true;
+      cancelBtn.textContent = 'Cancelling…';
+      cancelBtn.disabled    = true;
+    });
+
+    // ── Result card ───────────────────────────────────────────────
+    function addResultCard(filename, blobUrl, count, idx) {
+      const grid = document.getElementById('resultsGrid');
+      const card = document.createElement('div');
+      card.className  = 'result-card';
+      card.dataset.idx = idx;
+
+      card.innerHTML = `
+        <div class="result-card-img-wrap">
+          <img class="result-card-img" src="${blobUrl}" alt="${filename}" loading="lazy">
+          <button class="result-card-dl" title="Download" aria-label="Download">↓</button>
+        </div>
+        <div class="result-card-bar">
+          <span class="result-card-name">${filename}</span>
+          <span class="result-card-badge">${count}</span>
+        </div>`;
+
+      card.querySelector('.result-card-img-wrap').addEventListener('click', (e) => {
+        if (e.target.closest('.result-card-dl')) return;
+        openLightbox(idx);
+      });
+
+      card.querySelector('.result-card-dl').addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerDownload(blobUrl, filename.replace(/\.[^.]+$/, '') + '_detected.jpg');
+      });
+
+      // Fade-in
+      card.style.opacity   = '0';
+      card.style.transform = 'translateY(8px)';
+      grid.appendChild(card);
+      card.offsetHeight;
+      card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
+      card.style.opacity    = '1';
+      card.style.transform  = 'translateY(0)';
+    }
+
+    function replaceResultCard(filename, blobUrl, count, idx) {
+      const grid = document.getElementById('resultsGrid');
+      const old  = grid.querySelector(`.result-card[data-idx="${idx}"]`);
+      if (!old) { addResultCard(filename, blobUrl, count, idx); return; }
+
+      const card = document.createElement('div');
+      card.className   = 'result-card';
+      card.dataset.idx = idx;
+      card.innerHTML = `
+        <div class="result-card-img-wrap">
+          <img class="result-card-img" src="${blobUrl}" alt="${filename}" loading="lazy">
+          <button class="result-card-dl" title="Download" aria-label="Download">↓</button>
+        </div>
+        <div class="result-card-bar">
+          <span class="result-card-name">${filename}</span>
+          <span class="result-card-badge">${count}</span>
+        </div>`;
+
+      card.querySelector('.result-card-img-wrap').addEventListener('click', (e) => {
+        if (e.target.closest('.result-card-dl')) return;
+        openLightbox(idx);
+      });
+      card.querySelector('.result-card-dl').addEventListener('click', (e) => {
+        e.stopPropagation();
+        triggerDownload(blobUrl, filename.replace(/\.[^.]+$/, '') + '_detected.jpg');
+      });
+
+      // Swap with a brief flash
+      card.style.opacity = '0';
+      grid.replaceChild(card, old);
+      card.offsetHeight;
+      card.style.transition = 'opacity 0.3s ease';
+      card.style.opacity    = '1';
+    }
+
+    function triggerDownload(url, filename) {
+      const a = Object.assign(document.createElement('a'), { href: url, download: filename });
+      a.click();
+    }
+
+    // ── Download All ──────────────────────────────────────────────
+    document.getElementById('downloadAll').addEventListener('click', () => {
+      if (!results.length) { alert('No results yet.'); return; }
+      results.forEach((r, i) => setTimeout(() =>
+        triggerDownload(r.blobUrl, r.filename.replace(/\.[^.]+$/, '') + '_detected.jpg'),
+        i * 300
+      ));
+    });
+
+    // ── Lightbox ──────────────────────────────────────────────────
+    const lightbox         = document.getElementById('lightbox');
+    const lightboxBackdrop = document.getElementById('lightboxBackdrop');
+    const lightboxImg      = document.getElementById('lightboxImg');
+    const lightboxFilename = document.getElementById('lightboxFilename');
+    const lightboxBadge    = document.getElementById('lightboxBadge');
+    const lightboxClose    = document.getElementById('lightboxClose');
+    const lightboxPrev     = document.getElementById('lightboxPrev');
+    const lightboxNext     = document.getElementById('lightboxNext');
+
+    function openLightbox(idx) {
+      lightboxIdx = idx;
+      renderLightbox();
+      lightbox.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    }
+
+    function closeLightbox() {
+      lightbox.classList.remove('open');
+      document.body.style.overflow = '';
+    }
+
+    function renderLightbox() {
+      const r = results[lightboxIdx];
+      lightboxImg.src            = r.blobUrl;
+      lightboxFilename.textContent = r.filename;
+      lightboxBadge.textContent  = `${r.count} stave${r.count !== 1 ? 's' : ''}`;
+      lightboxPrev.style.visibility = lightboxIdx > 0 ? 'visible' : 'hidden';
+      lightboxNext.style.visibility = lightboxIdx < results.length - 1 ? 'visible' : 'hidden';
+    }
+
+    lightboxClose.addEventListener('click', closeLightbox);
+    lightboxBackdrop.addEventListener('click', closeLightbox);
+    lightboxPrev.addEventListener('click', () => {
+      if (lightboxIdx > 0) { lightboxIdx--; renderLightbox(); }
+    });
+    lightboxNext.addEventListener('click', () => {
+      if (lightboxIdx < results.length - 1) { lightboxIdx++; renderLightbox(); }
+    });
+    document.addEventListener('keydown', (e) => {
+      if (!lightbox.classList.contains('open')) return;
+      if (e.key === 'Escape')      closeLightbox();
+      if (e.key === 'ArrowLeft'  && lightboxIdx > 0)                  { lightboxIdx--; renderLightbox(); }
+      if (e.key === 'ArrowRight' && lightboxIdx < results.length - 1) { lightboxIdx++; renderLightbox(); }
+    });
+
+    // ── Table ─────────────────────────────────────────────────────
     async function refreshTable() {
       const html = await fetch('/table/').then(r => r.text());
       const wrap = document.getElementById('tableDiv');
@@ -226,11 +423,10 @@
           .map(c => `"${c.textContent.trim()}"`)
           .join(','))
         .join('\n');
-      const a = Object.assign(document.createElement('a'), {
-        href:     URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
-        download: 'stave_detections.csv'
-      });
-      a.click();
+      triggerDownload(
+        URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        'stave_detections.csv'
+      );
     });
   </script>
 </body>

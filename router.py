@@ -1,4 +1,4 @@
-from fastapi import FastAPI, UploadFile, File, Form
+from fastapi import FastAPI, UploadFile, Form
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 import glob
@@ -34,7 +34,7 @@ print(f"Localizer model: {onnx_localizer_path}")
 print(f"Counter model:   {onnx_counter_path}")
 
 #create pandas table to track inference results
-table_df = pd.DataFrame(columns=["img_name", "count"])
+table_df = pd.DataFrame(columns=["img_name", "count", "conf_threshold"])
 
 #routes
 
@@ -48,7 +48,7 @@ async def read_root():
 #running prediction with ONNXRuntime
 @app.post("/predictOnnx/")
 async def count_staves(file: UploadFile,
-                        conf_thresh: float = Form(0.25),
+                        conf_thresh: float = Form(0.45),
                         iou_thresh: float = Form(0.60)):
 
     global table_df
@@ -79,9 +79,10 @@ async def count_staves(file: UploadFile,
     # #store results to pandas table
     img_name = file.filename
     if img_name in table_df["img_name"].values:
-        table_df.loc[table_df["img_name"]==img_name, "count"] = staves_count
+        table_df.loc[table_df["img_name"]==img_name, "count"]          = staves_count
+        table_df.loc[table_df["img_name"]==img_name, "conf_threshold"] = conf_thresh
     else:
-        table_df = pd.concat([table_df, pd.DataFrame([{"img_name": img_name, "count": staves_count}])], ignore_index=True)
+        table_df = pd.concat([table_df, pd.DataFrame([{"img_name": img_name, "count": staves_count, "conf_threshold": conf_thresh}])], ignore_index=True)
     
     #final img to buffer, send back to index page
     output_buffer = io.BytesIO()

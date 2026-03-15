@@ -91,6 +91,25 @@ async def count_staves(file: UploadFile,
     
     return StreamingResponse(output_buffer, media_type="image/jpeg", headers={"staves-count": str(staves_count)})
 
+def get_model_info():
+    localizer_name = os.path.basename(onnx_localizer_path)
+    counter_name = os.path.basename(onnx_counter_path)
+
+    def version(name):
+        m = re.search(r"_v(\d+)\.onnx$", name)
+        return m.group(1) if m else "unknown"
+
+    return {
+        "localizer": {"file": localizer_name, "version": version(localizer_name)},
+        "counter": {"file": counter_name, "version": version(counter_name)}
+    }
+
+
+@app.get("/model_version/")
+async def model_version():
+    return JSONResponse(get_model_info())
+
+
 #returns pandas table storing results as a html string
 @app.get("/table/", response_class=HTMLResponse)
 async def return_table():

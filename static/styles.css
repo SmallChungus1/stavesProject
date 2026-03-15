@@ -66,6 +66,14 @@ body {
   color: var(--text-1);
 }
 
+.header-sub {
+  font-size: 0.76rem;
+  font-weight: 500;
+  color: var(--text-2);
+  margin-top: 0.15rem;
+  font-family: var(--mono);
+}
+
 /* ── Layout ──────────────────────────────────────────────────────── */
 .main-content {
   max-width: 860px;

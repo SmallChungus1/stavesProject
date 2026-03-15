@@ -1,6 +1,6 @@
 """
 Usage:
-uv run python train.py --model yolov8n --mode pretrain
+uv run python train.py --model yolo11s --mode pretrain
 
 Modes: 
 pretrain: pretrains with domain relevant dataset

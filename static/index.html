@@ -436,8 +436,8 @@
         if (!response.ok) throw new Error(`${response.status}`);
         const data = await response.json();
         document.getElementById('modelVersionInfo').textContent =
-          `Localizer: ${data.localizer.file} (v${data.localizer.version}) • ` +
-          `Counter: ${data.counter.file} (v${data.counter.version})`;
+          `Localizer: v${data.localizer.version} | ` +
+          `Counter: v${data.counter.version}`;
       } catch (err) {
         console.warn('Failed to load model versions', err);
         document.getElementById('modelVersionInfo').textContent = 'Model versions: unavailable';

@@ -42,7 +42,7 @@ from ultralytics import YOLO
 
 ONNX_OPSET     = 19
 INPUT_IMGSZ    = 512
-BENCHMARK_IMGS = 5
+BENCHMARK_IMGS = 7
 
 DATA_PRETRAIN           = "pretrain_dataset/data.yaml"
 DATA_FINETUNE_LOCALIZER = "finetune_dataset/staves_localizer/stavesImg50.yaml"

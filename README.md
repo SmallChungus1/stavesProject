@@ -11,7 +11,7 @@ The project includes training scripts (no training data provided) with MLFlow tr
 - Drag & drop the sample images included under the `sample_data` folder
 - Press `Run Detection` to start model inference, model outputs are visualized in a card under the Detection Input card
 - Under `Advanced Settings`, you can adjust `Confidence Threshold` to surpress low confidence detections (can help reduce false positives) and `IoU Threshold` to reduce overlapping detections
-![Image of Deployed Staves Web App](readme_assets/staves_app_screenshot.png)
+<img src="readme_assets/staves_app_screenshot.png" width="600" alt="Image of Deployed Staves Web App">
 
 ## Repository Structure:
 - `main.py`: Entry point for various operations

@@ -1,123 +1,120 @@
-# stavesProject
+# Staves Detection Machine Learning Project
 
-## Project overview
+## Overview
 
-`stavesProject` is a two-stage wood stave detection and counting system built with YOLO object detection and ONNX inference. It detects the stave region in an image, crops to that region, then counts staves inside the crop.
+This project automates the wood staves counting proccess for wood manufactuers. The system uses a two-stage YOLO models: first model localizes the stave pallet region and crops it out, then a counter model counts the individual staves in the cropped regions to produce a tally. It also contains code for the inference web app, with the option to run locally as a docker container or use it live using the URL provided below.
 
-This repo includes training scripts (`train.py`), benchmark/export scripts (`scripts/benchmark_and_register.py`), and a FastAPI + web UI app (`router.py`, `static/index.html`) for live inference.
+The project includes training scripts (no training data provided) with MLFlow tracking, model export utilities, and a files for the inference web application. All models are exported to ONNX format for efficient production deployment.
 
+## Live Demo:
+### **[Try the app here](http://129.146.115.232:8000)**
+- Drag & drop the sample images included under the `sample_data` folder
+- Press `Run Detection` to start model inference, model outputs are visualized in a card under the Detection Input card
+- Under `Advanced Settings`, you can adjust `Confidence Threshold` to surpress low confidence detections (can help reduce false positives) and `IoU Threshold` to reduce overlapping detections
+![Image of Deployed Staves Web App](readme_assets/staves_app_screenshot.png)
 
-## Problem solved
-
-- Input: photos of stacked wooden staves (planks)
-- Output: per-image stave count and annotated result image
-- Uses a localizer model to find the relevant region (1 box) then a counter model to detect each stave inside that crop
-
-### Why this is useful
-
-- Practical for inventory management, automated mill counting, and quality control in wood processing
-- Avoids manual visual counting in noisy, variable-background images
-
-
-## Key modeling design decisions
-
-1. Two-stage pipeline
-   - Stage 1: `localizer` model (single bbox). Goal: reduce false positives and focus the counter on the relevant region.
-   - Stage 2: `finetune` counter model (staves detection)
-
-2. Single-class YOLO labels (`staves_region` for localizer, `wood` / `stave` for counter)
-
-3. ONNX for production inference
-   - `yolo_onnx.py` handles preprocessing, inference, NMS, postprocess
-   - backend endpoint `POST /predictOnnx/`
-
-4. Versioning by filename: `staves_detector_{mode}_onnx_v{N}.onnx`
-   - `router.py` picks latest via glob + regex
-   - UI displays localizer / counter model versions in header
+## Repository Structure:
+- `main.py`: Entry point for various operations
+- `train.py`: Model training scripts (not runnable unless training data is provided)
+- `router.py`: FastAPI web application
+- `yolo_onnx.py`: ONNX inference utilities
+- `yoloPostprocessUtils.py`: Post-processing functions
+- `scripts/`: Utility scripts for ONNX model conversion, benchmarking, uploading/downloading model weights from MLFlow (env setup required)
+   - `benchmark_and_register.py`: converts PyTorch model to ONNX, benchmarks ONNX model against PyTorch, and saves ONNX model with benchmark results to MLFlow registry 
+   - `download_registered_model.py`: pulls models from MLFlow registry, used with Github Actions for build/deployment.
+- `static/`: Web frontend files
+- `weights/`: Pre-trained model weights
+- `colab_files/`: Colab notebook files for experimentation
+- `sample_data/`: Example input data
 
 
-## End-to-end system flow
-
-1. User uploads image(s) in web app (`static/index.html`)
-2. `POST /predictOnnx/` in `router.py`
-3. Stage 1 localizer inference
-4. Crop image to localizer bbox
-5. Stage 2 counter inference on cropped image
-6. Send annotated image back and header `staves-count`
-7. Show result cards + log table in UI
-
-
-## How to run
+## Running Inference Web Application Locally
 
 ### Prerequisites
+- Python 3.11-3.13
+- `uv` for package installations
+- `.env` file, check out the `.env-example`
 
-- Python 3.12
-- `uv` or `pip install -r requirements.txt` (if relevant)
-- `.env` with `MLFLOW_TRACKING_URI`, `MLFLOW_TRACKING_USERNAME`, `MLFLOW_TRACKING_PASSWORD` for benchmark/email features
-
-### Train
-
+### Package Installation
 ```bash
-uv run python train.py --model yolo11n --mode pretrain
-uv run python train.py --model yolo11n --mode localizer
-uv run python train.py --model yolo11s --mode finetune
+uv sync
 ```
 
-### Benchmark + register ONNX
-
+### Run Web Application
 ```bash
-uv run python scripts/benchmark_and_register.py --model yolo11s --mode finetune
-```
-
-### Download registered ONNX (optionally)
-
-```bash
-uv run python scripts/download_registered_model.py --mode finetune
-uv run python scripts/download_registered_model.py --mode finetune --version 3
-```
-
-### Run server
-
-```bash
+# Start the FastAPI server
 uv run uvicorn router:app --reload --port 8000
 ```
 
-Open `http://localhost:8000/`.
+Open `http://localhost:8000/` in your browser to access the web interface for uploading images and viewing results.
 
 
-## Model versions in UI
+## Model Design Choices
 
-- `router.py` finds latest ONNX files in `models/` using a filename pattern
-- `GET /model_version/` returns JSON with localizer and counter model names and versions
-- Frontend JS in `static/index.html` loads this into the header text
+### Two-Stage Pipeline
+![2-stage yolo model diagram](readme_assets/staves_model_diagram.png)
+- **Localizer Stage**: Trains a YOLO model to detect the bounding box of the entire stave pallet, filtering out background objects like other pallets. Crops out the pallet region. 
+- **Counter Stage**: Applies a more precise YOLO model to count individual staves within the localized region. <br><br>
+Splitting up the model into 2 stages allowed more training data to be curated for the localizer model (due to easier labeling), allowing localizer and counter to improve independently
+
+### Model Architecture
+- Used YOLOv11s models for both localizer and counter stages
+   - More suitable for deployment in the OCI VM instance which has 2 CPU cores and 12gb RAM, compared to larger YOLO models or RT-DETR
+- Both localzier and counter models are converted to ONNX format, inference served using ONNX runtime
+   - Achieved 2.5x inference speed up with minial degradtion in model performance, important for making web application not feel slow
+
+### Data Strategy
+- **Domain-relevant pretraining**: Pre-trained counter model on 1,400 
+  annotated wood plank images from Roboflow before fine-tuning on the 
+  target dataset, yielding +24% mAP50-95 and +10.8% mAP50 improvement
+- **Pseudo-label active learning**: Scaled labeled dataset from 15 to 70 
+  images by using the trained model to identify images where it was 
+  undercounting, manually correcting those labels, and retraining 
+  iteratively — focusing human annotation effort on model failure cases
+
+## End-to-End System
+![project diagram](readme_assets/staves_project_diagram.png)
+
+- **Training**: `train.py` trains the YOLO11s localizer and counter models 
+  with MLflow experiment tracking logged to Dagshub
+- **ONNX Conversion**: `scripts/benchmark_and_register.py` exports trained 
+  PyTorch weights to ONNX, benchmarks latency and throughput against the 
+  PyTorch baseline (p50/p95/p99), and registers the ONNX model to the 
+  MLflow Model Registry on Dagshub
+- **CI/CD**: On push to main, GitHub Actions pulls the registered ONNX model 
+  weights from the MLflow registry, builds a Docker image containing FastAPI, 
+  the HTML/CSS frontend, and ONNX Runtime, and pushes it to OCI Container 
+  Registry
+- **Deployment**: The OCI VM pulls the latest Docker image from OCI Container 
+  Registry and runs the containerized inference service via URL provided above
 
 
-## Dataset structure
-
-- `pretrain_dataset/` for initial pretraining
-- `finetune_dataset/staves_localizer/` and `finetune_dataset/stave_count/` for final models
-- Each has `images/train`, `images/val`, same shape labels in YOLO format `class x_center y_center w h`
+## Model Performance
+| Metric | Without pretraining | With pretraining |
+|---|---|---|
+| mAP50 | 0.738 | 0.817 (+10.8%) |
+| mAP50-95 | 0.482 | 0.599 (+24.2%) |
+| Precision | 0.955 | 0.991 |
+| Recall | 0.530 | 0.563 |
 
 ## Attribution
 
-- I wrote all code in this repository (`train.py`, `router.py`, `yolo_onnx.py`, `yoloPostprocessUtils.py`, `scripts/*`, `static/*`).
-- Libraries used: Ultralytics YOLO, OpenCV, onnxruntime, fastapi, pandas, PIL
+### Written by me
+- Two-stage pipeline architecture and design decisions
+- Data annotation and pseudo-label active learning loop
+- train.py — training pipeline with MLflow logging
+- router.py — FastAPI inference endpoints and postprocessing
+- Docker + OCI deployment configuration
+- Colab notebook files for inital model training/experimentation
 
+### Built with AI coding tools (Codex, Claude)
+The following created with help of AI coding tools:
+- Refactored training scripts from Colab notebooks to 
+  modular Python scripts
+- Frontend redesign (static/index.html, static/styles.css)
+- Github Actions Pipeline
+- scripts/benchmark_and_register.py — ONNX export and benchmarking
+- scripts/download_registered_model.py — MLflow registry model pull
 
-## Video walkthrough notes (Tubi builders format)
-
-In your 3-5 minute video, cover:
-- Problem: automated stave counting from photos
-- Data + labels: single-class bounding boxes
-- Model design: two-stage localizer + counter
-- End-to-end flow: upload → localizer → crop → counter → annotation → display
-- Results: number of staves and logs
-- New feature: model version reporting in UI
-- What you wrote: all repo code; mention adapted parts are from ultralytics library and standard ASR scaffolding
-
-
-## Optional: academic reference
-
-- No paper published for this project (N/A). If you publish, include link here.
 
 

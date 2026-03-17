@@ -156,7 +156,7 @@ def main():
         val_model    = YOLO(pt_path)
         val_results  = val_model.val(data=data_yaml, device="cpu")
         mlflow.log_metrics({
-            "val/pt_mAP50":     float(val_results.box.map50)+0.04,
+            "val/pt_mAP50":     float(val_results.box.map50),
             "val/pt_mAP50-95":  float(val_results.box.map),
             "val/pt_precision": float(val_results.box.mp),
             "val/pt_recall":    float(val_results.box.mr),
@@ -201,7 +201,7 @@ def main():
         onnx_val_model   = YOLO(onnx_name)
         onnx_val_results = onnx_val_model.val(data=data_yaml, device="cpu", imgsz=INPUT_IMGSZ)
         mlflow.log_metrics({
-            "val/onnx_mAP50":     float(onnx_val_results.box.map50)+0.04,
+            "val/onnx_mAP50":     float(onnx_val_results.box.map50),
             "val/onnx_mAP50-95":  float(onnx_val_results.box.map),
             "val/onnx_precision": float(onnx_val_results.box.mp),
             "val/onnx_recall":    float(onnx_val_results.box.mr),

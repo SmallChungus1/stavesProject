@@ -1,6 +1,0 @@
-names:
-  0: staves_region
-nc: 1
-train: stavesImgs50/images/train
-val: stavesImgs50/images/val
-

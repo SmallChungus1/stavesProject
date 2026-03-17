@@ -1,5 +1,0 @@
-names:
-  0: staves_region
-nc: 1
-train: ft2imgs/images/train
-val: ft2imgs/images/val

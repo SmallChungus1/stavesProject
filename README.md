@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project automates the wood staves counting proccess for wood manufactuers. The system uses a two-stage YOLO models: first model localizes the stave pallet region and crops it out, then a counter model counts the individual staves in the cropped regions to produce a tally. It also contains code for the inference web app, with the option to run locally as a docker container or use it live using the URL provided below.
+This project automates the wood staves counting process for wood manufacturers. The system uses a two-stage YOLO models: first model localizes the stave pallet region and crops it out, then a counter model counts the individual staves in the cropped regions to produce a tally. It also contains code for the inference web app, with the option to run locally as a docker container or use it live using the URL provided below.
 
 The project includes training scripts (no training data provided) with MLFlow tracking, model export utilities, and a files for the inference web application. All models are exported to ONNX format for efficient production deployment.
 
@@ -60,17 +60,19 @@ Splitting up the model into 2 stages allowed more training data to be curated fo
 ### Model Architecture
 - Used YOLOv11s models for both localizer and counter stages
    - More suitable for deployment in the OCI VM instance which has 2 CPU cores and 12gb RAM, compared to larger YOLO models or RT-DETR
-- Both localzier and counter models are converted to ONNX format, inference served using ONNX runtime
-   - Achieved 2.5x inference speed up with minial degradtion in model performance, important for making web application not feel slow
+- Both localizer and counter models are converted to ONNX format, inference served using ONNX runtime
+   - Achieved 2.5x inference speed up with minimal degradtion in model performance, important for making web application not feel slow
 
 ### Data Strategy
 - **Domain-relevant pretraining**: Pre-trained counter model on 1,400 
   annotated wood plank images from Roboflow before fine-tuning on the 
   target dataset, yielding +24% mAP50-95 and +10.8% mAP50 improvement
-- **Pseudo-label active learning**: Scaled labeled dataset from 15 to 70 
+- **Pseudo-label approach for stave labeling**: Scaled labeled dataset from 15 to 70 
   images by using the trained model to identify images where it was 
   undercounting, manually correcting those labels, and retraining 
   iteratively — focusing human annotation effort on model failure cases
+
+<img src="readme_assets/staves_data_strategy.png" width="400" alt="Pseudo-label approach diagram">
 
 ## End-to-End System
 ![project diagram](readme_assets/staves_project_diagram.png)
@@ -105,11 +107,11 @@ Splitting up the model into 2 stages allowed more training data to be curated fo
 - train.py — training pipeline with MLflow logging
 - router.py — FastAPI inference endpoints and postprocessing
 - Docker + OCI deployment configuration
-- Colab notebook files for inital model training/experimentation
+- Colab notebook files for initial model training/experimentation
 
 ### Built with AI coding tools (Codex, Claude)
 The following created with help of AI coding tools:
-- Refactored training scripts from Colab notebooks to 
+- Refactored scripts from Colab notebooks to 
   modular Python scripts
 - Frontend redesign (static/index.html, static/styles.css)
 - Github Actions Pipeline

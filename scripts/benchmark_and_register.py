@@ -4,10 +4,10 @@ logs all metrics and artifacts to MLflow on Dagshub, and registers the ONNX
 model to the MLflow Model Registry for manual promotion review.
 
 Usage:
-    uv run python scripts/benchmark_and_register.py --model yolov8n --mode finetune
+    uv run python scripts/benchmark_and_register.py --model yolo11s --mode finetune
 
 Args:
-    --model : YOLO model stem name, e.g. "yolov8n", "yolo11m"
+    --model : YOLO model stem name, e.g. "yolo11s", "yolo11m", "yolov8n"
     --mode  : one of "pretrain", "finetune", "localizer"
 
 Expected weights file: weights/best_{mode}.pt
@@ -15,9 +15,9 @@ ONNX output:           {model}_{mode}.onnx
 MLflow run name:       {model}_{mode}_benchmark
 
 Required .env variables:
-    DAGSHUB_TOKEN
-    DAGSHUB_REPO_OWNER
-    DAGSHUB_REPO_NAME
+MLFLOW_TRACKING_URI
+MLFLOW_TRACKING_USERNAME
+MLFLOW_TRACKING_PASSWORD
 """
 
 import argparse

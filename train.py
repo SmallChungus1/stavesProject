@@ -6,6 +6,11 @@ Modes:
 pretrain: pretrains with domain relevant dataset
 finetune: finetunes model with target dataset
 localizer: train first stage localzier
+
+Required .env variables:
+MLFLOW_TRACKING_URI
+MLFLOW_TRACKING_USERNAME
+MLFLOW_TRACKING_PASSWORD
 """
 
 import argparse

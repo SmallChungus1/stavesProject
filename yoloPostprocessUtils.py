@@ -30,6 +30,9 @@ def extract_highest_conf_bbox(bboxes, conf_scores):
     localizer_conf_scores = np.array(conf_scores)
     localizer_boxes = np.array(bboxes)
 
+    if localizer_boxes.size == 0 or localizer_conf_scores.size == 0:
+        return None, None
+
     max_idx = np.argmax(localizer_conf_scores)
 
     top_box = localizer_boxes[max_idx]

@@ -13,10 +13,19 @@ from yolo_onnx import YOLO_OnnxRuntime
 
 
 def find_latest_onnx(directory: str, mode: str) -> str:
-    pattern = os.path.join(directory, f"staves_detector_{mode}_onnx_v*.onnx")
-    matches = glob.glob(pattern)
+    search_dirs = [directory]
+    if directory != "weights":
+        search_dirs.append("weights")
+
+    matches = []
+    for search_dir in search_dirs:
+        pattern = os.path.join(search_dir, f"staves_detector_{mode}_onnx_v*.onnx")
+        matches.extend(glob.glob(pattern))
+
     if not matches:
-        raise FileNotFoundError(f"No ONNX model found for mode '{mode}' in '{directory}'")
+        raise FileNotFoundError(
+            f"No ONNX model found for mode '{mode}' in '{directory}' or 'weights'"
+        )
     # extract version number from filename and return the highest
     def version_num(path):
         m = re.search(r"_v(\d+)\.onnx$", path)
@@ -34,7 +43,7 @@ print(f"Localizer model: {onnx_localizer_path}")
 print(f"Counter model:   {onnx_counter_path}")
 
 #create pandas table to track inference results
-table_df = pd.DataFrame(columns=["img_name", "count", "conf_threshold"])
+table_df = pd.DataFrame(columns=["img_name", "count", "conf_threshold", "density_filter"])
 
 #routes
 
@@ -49,7 +58,8 @@ async def read_root():
 @app.post("/predictOnnx/")
 async def count_staves(file: UploadFile,
                         conf_thresh: float = Form(0.45),
-                        iou_thresh: float = Form(0.60)):
+                        iou_thresh: float = Form(0.60),
+                        density_filter: bool = Form(False)):
 
     global table_df
     image_bytes = await file.read()
@@ -61,35 +71,72 @@ async def count_staves(file: UploadFile,
 
     #run image thru first stage staves localizer
     print("running through first stage localizer model")
-    localizer_results = YOLO_OnnxRuntime(onnx_localizer_path, image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    localizer_results = YOLO_OnnxRuntime(
+        onnx_localizer_path,
+        image,
+        confidence_thres=conf_thresh,
+        iou_thres=iou_thresh,
+    )
     _, localzier_boxes, localizer_conf_scores, _ = localizer_results.main()
     highest_conf_localizer_bbox, _ = extract_highest_conf_bbox(localzier_boxes, localizer_conf_scores)
-    bbox_corner_cords = convert_cornerWidthHeight_to_cornerCords(highest_conf_localizer_bbox.tolist())
-    cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
+    if highest_conf_localizer_bbox is None:
+        cropped_image = image
+    else:
+        bbox_corner_cords = convert_cornerWidthHeight_to_cornerCords(highest_conf_localizer_bbox.tolist())
+        cropped_image = crop_pillow_img_from_bbox(bbox_corner_cords, image)
     
     #second stage staves counter
     print("running through second stage staves counter model")
-    counter_results = YOLO_OnnxRuntime(onnx_counter_path, cropped_image, confidence_thres=conf_thresh, iou_thres=iou_thresh)
+    counter_results = YOLO_OnnxRuntime(
+        onnx_counter_path,
+        cropped_image,
+        confidence_thres=conf_thresh,
+        iou_thres=iou_thresh,
+        enable_density_filter=density_filter,
+    )
     counter_annotated_arr, counter_boxes, _, _ = counter_results.main()
     staves_count = len(counter_boxes)
     
     #counter_results.main() returns numpy, need to conver to pil for further processing
-    counter_annotated_img = Image.fromarray(counter_annotated_arr)
+    counter_annotated_img = Image.fromarray(counter_annotated_arr[:, :, ::-1].copy())
     
     # #store results to pandas table
     img_name = file.filename
     if img_name in table_df["img_name"].values:
         table_df.loc[table_df["img_name"]==img_name, "count"]          = staves_count
         table_df.loc[table_df["img_name"]==img_name, "conf_threshold"] = conf_thresh
+        table_df.loc[table_df["img_name"]==img_name, "density_filter"] = density_filter
     else:
-        table_df = pd.concat([table_df, pd.DataFrame([{"img_name": img_name, "count": staves_count, "conf_threshold": conf_thresh}])], ignore_index=True)
+        table_df = pd.concat(
+            [
+                table_df,
+                pd.DataFrame(
+                    [
+                        {
+                            "img_name": img_name,
+                            "count": staves_count,
+                            "conf_threshold": conf_thresh,
+                            "density_filter": density_filter,
+                        }
+                    ]
+                ),
+            ],
+            ignore_index=True,
+        )
     
     #final img to buffer, send back to index page
     output_buffer = io.BytesIO()
     counter_annotated_img.save(output_buffer, format="JPEG")
     output_buffer.seek(0)
     
-    return StreamingResponse(output_buffer, media_type="image/jpeg", headers={"staves-count": str(staves_count)})
+    return StreamingResponse(
+        output_buffer,
+        media_type="image/jpeg",
+        headers={
+            "staves-count": str(staves_count),
+            "density-filter": str(density_filter).lower(),
+        },
+    )
 
 def get_model_info():
     localizer_name = os.path.basename(onnx_localizer_path)
@@ -121,5 +168,5 @@ async def return_table():
 async def clear_table():
     global table_df
     # reinitialize with the same columns
-    table_df = pd.DataFrame(columns=["img_name", "count"])
+    table_df = pd.DataFrame(columns=["img_name", "count", "conf_threshold", "density_filter"])
     return JSONResponse({"status": "cleared"})

@@ -3,13 +3,22 @@ import numpy as np
 from typing import List, Tuple, Union
 from PIL import Image
 import onnxruntime as ort
+from scripts.density_filter_utils import select_primary_density_cluster
 
 class YOLO_OnnxRuntime:
-    def __init__(self, onnx_model: str, input_image: Union[str, Image.Image], confidence_thres: float, iou_thres: float):
+    def __init__(
+        self,
+        onnx_model: str,
+        input_image: Union[str, Image.Image],
+        confidence_thres: float,
+        iou_thres: float,
+        enable_density_filter: bool = False,
+    ):
         self.onnx_model = onnx_model
         self.input_image = input_image
         self.confidence_thres = confidence_thres
         self.iou_thres = iou_thres
+        self.enable_density_filter = enable_density_filter
 
         self.classes = ["stave"]
         self.color_palette = np.random.uniform(0, 255, size=(len(self.classes), 3))
@@ -204,8 +213,17 @@ class YOLO_OnnxRuntime:
                 scores.append(max_score)
                 boxes.append([left, top, width, height])
 
+        if not boxes:
+            return input_image, [], [], []
+
         # Apply non-maximum suppression to filter out overlapping bounding boxes
         indices = cv2.dnn.NMSBoxes(boxes, scores, self.confidence_thres, self.iou_thres)
+        if len(indices) == 0:
+            return input_image, [], [], []
+        if isinstance(indices, tuple):
+            indices = list(indices)
+        else:
+            indices = np.array(indices).reshape(-1).tolist()
 
         # Iterate over the selected indices after non-maximum suppression
         for i in indices:
@@ -218,8 +236,24 @@ class YOLO_OnnxRuntime:
             filtered_conf_scores.append(score)
             filtered_class_ids.append(class_id)
 
-            # Draw the detection on the input image
-            #self.draw_detections(input_image, box, score, class_id)
+        if self.enable_density_filter and len(filtered_boxes) >= 3:
+            density_result = select_primary_density_cluster(
+                filtered_boxes,
+                filtered_conf_scores,
+                self.img_width,
+                self.img_height,
+            )
+            if density_result.keep_indices:
+                filtered_boxes = [filtered_boxes[i] for i in density_result.keep_indices]
+                filtered_conf_scores = [filtered_conf_scores[i] for i in density_result.keep_indices]
+                filtered_class_ids = [filtered_class_ids[i] for i in density_result.keep_indices]
+            else:
+                filtered_boxes = []
+                filtered_conf_scores = []
+                filtered_class_ids = []
+
+        # Draw only the detections that survive the final post-processing step.
+        for box, class_id in zip(filtered_boxes, filtered_class_ids):
             self.draw_detection_center(input_image, box, class_id)
 
         # Return the modified input image, along with box, score and class_id of each detections

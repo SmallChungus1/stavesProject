@@ -7,7 +7,7 @@ This project automates the wood staves counting process for wood manufacturers. 
 The project includes training scripts (no training data provided) with MLFlow tracking, model export utilities, and a files for the inference web application. All models are exported to ONNX format for efficient production deployment.
 
 ## Live Demo:
-### **[Try the app here](http://129.146.115.232:8000)**
+### **[Try the app here](https://staves-detector.duckdns.org/)**
 - Drag & drop the sample images included under the `sample_data` folder
 - Press `Run Detection` to start model inference, model outputs are visualized in a card under the Detection Input card
 - Under `Advanced Settings`, you can adjust `Confidence Threshold` to surpress low confidence detections (can help reduce false positives) and `IoU Threshold` to reduce overlapping detections

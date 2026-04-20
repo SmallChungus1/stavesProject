@@ -30,12 +30,12 @@
       <p class="card-title">Detection Input</p>
 
       <form id="uploadForm" action="/predictOnnx/" method="post" enctype="multipart/form-data">
-        <input type="file" name="file" id="file" accept="image/*" multiple style="display:none">
+        <input type="file" name="file" id="file" accept="image/*" capture="environment" multiple style="display:none">
 
         <div class="drop-zone" id="dropZone">
           <div class="drop-icon">↑</div>
-          <p class="drop-text">Drag &amp; drop images here</p>
-          <p class="drop-sub">or <span class="drop-link">click to browse</span></p>
+          <p class="drop-text">Take or upload photos</p>
+          <p class="drop-sub">Tap to use your camera or choose from your gallery</p>
           <p class="drop-filename" id="selectedFilename"></p>
         </div>
 

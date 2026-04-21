@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inference Logs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div>
+          <h1 class="header-title">Inference Logs</h1>
+          <p class="header-sub">Raw model inference records</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a class="btn-secondary header-link" href="/">Back to app</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section class="card">
+      <div class="section-header">
+        <p class="card-title" style="margin:0">Inference Log Table</p>
+      </div>
+      <div class="table-wrap" id="logsTableDiv">
+        <p class="table-empty">No inference logs yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let refreshInFlight = false;
+    
+    // refresh page on tab click, so log results are fresh
+    async function refreshLogsTable() {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+
+      try {
+        const html = await fetch('/logs_table/', { cache: 'no-store' }).then(r => r.text());
+        document.getElementById('logsTableDiv').innerHTML = html;
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+
+    window.addEventListener('DOMContentLoaded', refreshLogsTable);
+    window.addEventListener('focus', refreshLogsTable);
+    window.addEventListener('pageshow', refreshLogsTable);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshLogsTable();
+    });
+  </script>
+</body>
+</html>

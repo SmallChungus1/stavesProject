@@ -58,6 +58,16 @@ body {
   gap: 0.85rem;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.header-link {
+  text-decoration: none;
+}
+
 .header-title {
   font-family: var(--display);
   font-size: 1.1rem;
@@ -630,13 +640,15 @@ body {
 }
 
 /* Pandas-generated table */
-#tableDiv table {
+#tableDiv table,
+#logsTableDiv table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
 }
 
-#tableDiv table thead th {
+#tableDiv table thead th,
+#logsTableDiv table thead th {
   font-family: var(--mono);
   font-size: 0.68rem;
   font-weight: 500;
@@ -650,21 +662,30 @@ body {
 
 /* Hide pandas row-index column */
 #tableDiv table thead tr th:first-child,
-#tableDiv table tbody tr th { display: none; }
+#tableDiv table tbody tr th,
+#logsTableDiv table tbody tr th { display: none; }
 
-#tableDiv table tbody td {
+#logsTableDiv table thead tr th {
+  white-space: nowrap;
+}
+
+#tableDiv table tbody td,
+#logsTableDiv table tbody td {
   padding: 0.6rem 1rem;
   color: var(--text-2);
   border-bottom: 1px solid var(--border-2);
 }
 
-#tableDiv table tbody tr:last-child td { border-bottom: none; }
+#tableDiv table tbody tr:last-child td,
+#logsTableDiv table tbody tr:last-child td { border-bottom: none; }
 
-#tableDiv table tbody tr:nth-child(odd) td {
+#tableDiv table tbody tr:nth-child(odd) td,
+#logsTableDiv table tbody tr:nth-child(odd) td {
   background: rgba(255, 255, 255, 0.018);
 }
 
-#tableDiv table tbody tr:hover td {
+#tableDiv table tbody tr:hover td,
+#logsTableDiv table tbody tr:hover td {
   background: rgba(88, 166, 255, 0.05);
   color: var(--text-1);
 }

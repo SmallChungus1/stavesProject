@@ -17,7 +17,14 @@ from yoloPostprocessUtils import (
     convert_cornerWidthHeight_to_cornerCords,
 )
 from yolo_onnx import YOLO_OnnxRuntime
-from db import init_log_db, insert_inference_log, query_inference_logs, render_logs_table, utc_now_sql
+from db import (
+    build_plot_series,
+    init_log_db,
+    insert_inference_log,
+    query_inference_logs,
+    render_logs_table,
+    utc_now_sql,
+)
 
 
 def find_latest_onnx(directory: str, mode: str) -> str:
@@ -148,14 +155,26 @@ async def model_version() -> JSONResponse:
     return JSONResponse(get_model_info())
 
 
-@app.get("/logs_table/", response_class=HTMLResponse)
-async def return_logs_table(
-    time_range: str = Query("24h"),
+@app.get("/logs_data/")
+async def return_logs_data(
+    metric: str = Query("latency_ms"),
+    time_range: str = Query("7d"),
     error_filter: str = Query("all"),
     _: None = Depends(require_logs_auth),
-) -> HTMLResponse:
+) -> JSONResponse:
     rows = query_inference_logs(time_range=time_range, error_filter=error_filter)
-    return HTMLResponse(render_logs_table(rows))
+    try:
+        plot_series = build_plot_series(rows, metric=metric)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    return JSONResponse(
+        {
+            "table_html": render_logs_table(rows),
+            "metric": metric,
+            **plot_series,
+        }
+    )
 
 
 @app.post("/predictOnnx/")

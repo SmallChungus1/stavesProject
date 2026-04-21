@@ -10,14 +10,12 @@
   <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
-
-  <!-- ── Header ─────────────────────────────────────────────────── -->
   <header class="site-header">
     <div class="header-inner">
       <div class="header-brand">
         <div>
           <h1 class="header-title">Stave Detection App</h1>
-          <p class="header-sub" id="modelVersionInfo">Model versions: loading…</p>
+          <p class="header-sub" id="modelVersionInfo">Model versions: loading...</p>
         </div>
       </div>
       <div class="header-actions">
@@ -27,8 +25,6 @@
   </header>
 
   <main class="main-content">
-
-    <!-- ── Upload Card ────────────────────────────────────────────── -->
     <section class="card">
       <p class="card-title">Detection Input</p>
 
@@ -50,9 +46,8 @@
                 <label class="slider-label" for="conf_thresh">Confidence Threshold</label>
                 <span class="slider-val" id="confVal">0.50</span>
               </div>
-              <input type="range" class="slider" id="conf_thresh" name="conf_thresh"
-                     min="0" max="1" step="0.01" value="0.50">
-              <p class="slider-hint">Higher → fewer, more confident detections</p>
+              <input type="range" class="slider" id="conf_thresh" name="conf_thresh" min="0" max="1" step="0.01" value="0.50">
+              <p class="slider-hint">Higher -> fewer, more confident detections</p>
             </div>
 
             <div class="slider-group">
@@ -60,14 +55,12 @@
                 <label class="slider-label" for="iou_thresh">IoU Threshold</label>
                 <span class="slider-val" id="iouVal">0.60</span>
               </div>
-              <input type="range" class="slider" id="iou_thresh" name="iou_thresh"
-                     min="0" max="1" step="0.01" value="0.60">
-              <p class="slider-hint">Lower → suppresses more overlapping boxes</p>
+              <input type="range" class="slider" id="iou_thresh" name="iou_thresh" min="0" max="1" step="0.01" value="0.60">
+              <p class="slider-hint">Lower -> suppresses more overlapping boxes</p>
             </div>
           </div>
         </details>
 
-        <!-- Progress (hidden until processing starts) -->
         <div class="progress-section" id="progressSection" style="display:none">
           <p class="progress-status" id="progressStatus"></p>
           <div class="progress-bar-wrap">
@@ -87,7 +80,6 @@
       </form>
     </section>
 
-    <!-- ── Results Grid (hidden until first run) ───────────────────── -->
     <section class="card results-section" id="resultsSection" style="display:none">
       <div class="section-header">
         <p class="card-title" style="margin:0">Detection Results</p>
@@ -96,10 +88,9 @@
       <div class="results-grid" id="resultsGrid"></div>
     </section>
 
-    <!-- ── Table Card ─────────────────────────────────────────────── -->
-    <section class="card">
+    <section class="card" id="sessionTableSection" style="display:none">
       <div class="section-header">
-        <p class="card-title" style="margin:0">Detection Log</p>
+        <p class="card-title" style="margin:0">Session Results</p>
         <div class="table-actions">
           <button class="btn-secondary" id="downloadCSV">↓ CSV</button>
           <button class="btn-secondary btn-danger" id="clearTable">Clear</button>
@@ -109,17 +100,15 @@
         <p class="table-empty">No detections yet.</p>
       </div>
     </section>
-
   </main>
 
-  <!-- ── Lightbox ───────────────────────────────────────────────── -->
   <div class="lightbox" id="lightbox">
     <div class="lightbox-backdrop" id="lightboxBackdrop"></div>
     <div class="lightbox-inner">
       <div class="lightbox-topbar">
         <span class="lightbox-filename" id="lightboxFilename"></span>
         <span class="lightbox-badge" id="lightboxBadge"></span>
-        <button class="lightbox-close" id="lightboxClose" aria-label="Close">✕</button>
+        <button class="lightbox-close" id="lightboxClose" aria-label="Close">×</button>
       </div>
       <div class="lightbox-body">
         <button class="lightbox-arrow lightbox-prev" id="lightboxPrev" aria-label="Previous">‹</button>
@@ -130,48 +119,45 @@
   </div>
 
   <script>
-    // ── State ─────────────────────────────────────────────────────
-    let selectedFiles   = [];
-    let results         = [];   // { filename, blobUrl, count }
+    const SESSION_RESULTS_KEY = 'staves-session-results';
+    let selectedFiles = [];
+    let results = [];
+    let sessionRows = [];
     let cancelRequested = false;
-    let lightboxIdx     = 0;
+    let lightboxIdx = 0;
 
-    // ── Sliders ───────────────────────────────────────────────────
     function updateSlider(slider, valEl) {
       const pct = (slider.value - slider.min) / (slider.max - slider.min) * 100;
-      slider.style.background =
-        `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
+      slider.style.background = `linear-gradient(to right, var(--accent) ${pct}%, var(--border) ${pct}%)`;
       valEl.textContent = parseFloat(slider.value).toFixed(2);
     }
 
     const confSlider = document.getElementById('conf_thresh');
-    const iouSlider  = document.getElementById('iou_thresh');
-    const confVal    = document.getElementById('confVal');
-    const iouVal     = document.getElementById('iouVal');
+    const iouSlider = document.getElementById('iou_thresh');
+    const confVal = document.getElementById('confVal');
+    const iouVal = document.getElementById('iouVal');
 
     updateSlider(confSlider, confVal);
     updateSlider(iouSlider, iouVal);
     confSlider.addEventListener('input', () => updateSlider(confSlider, confVal));
-    iouSlider.addEventListener('input',  () => updateSlider(iouSlider, iouVal));
+    iouSlider.addEventListener('input', () => updateSlider(iouSlider, iouVal));
 
-    // ── Drop zone ─────────────────────────────────────────────────
-    const dropZone  = document.getElementById('dropZone');
+    const dropZone = document.getElementById('dropZone');
     const fileInput = document.getElementById('file');
     const fileLabel = document.getElementById('selectedFilename');
 
     dropZone.addEventListener('click', () => fileInput.click());
-
     dropZone.addEventListener('dragover', (e) => {
       e.preventDefault();
       dropZone.classList.add('drag-over');
     });
-    ['dragleave', 'dragend'].forEach(ev =>
-      dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'))
-    );
+    ['dragleave', 'dragend'].forEach((ev) => {
+      dropZone.addEventListener(ev, () => dropZone.classList.remove('drag-over'));
+    });
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       dropZone.classList.remove('drag-over');
-      setFiles(Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/')));
+      setFiles(Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/')));
     });
     fileInput.addEventListener('change', () => {
       if (fileInput.files.length) setFiles(Array.from(fileInput.files));
@@ -180,63 +166,67 @@
     function setFiles(files) {
       if (!files.length) return;
       selectedFiles = files;
-      fileLabel.textContent = files.length === 1
-        ? files[0].name
-        : `${files.length} images selected`;
+      fileLabel.textContent = files.length === 1 ? files[0].name : `${files.length} images selected`;
       dropZone.classList.add('has-file');
     }
 
-    // ── Form submit (sequential batch) ────────────────────────────
-    const form            = document.getElementById('uploadForm');
-    const submitBtn       = document.getElementById('submitBtn');
-    const cancelBtn       = document.getElementById('cancelBtn');
-    const btnText         = document.getElementById('btnText');
-    const btnSpinner      = document.getElementById('btnSpinner');
+    const form = document.getElementById('uploadForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const cancelBtn = document.getElementById('cancelBtn');
+    const btnText = document.getElementById('btnText');
+    const btnSpinner = document.getElementById('btnSpinner');
     const progressSection = document.getElementById('progressSection');
-    const progressStatus  = document.getElementById('progressStatus');
-    const progressBar     = document.getElementById('progressBar');
-    const resultsSection  = document.getElementById('resultsSection');
+    const progressStatus = document.getElementById('progressStatus');
+    const progressBar = document.getElementById('progressBar');
+    const resultsSection = document.getElementById('resultsSection');
+    const sessionTableSection = document.getElementById('sessionTableSection');
 
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-      if (!selectedFiles.length) { alert('Please select at least one image.'); return; }
+      if (!selectedFiles.length) {
+        alert('Please select at least one image.');
+        return;
+      }
 
-      cancelRequested       = false;
-      submitBtn.disabled    = true;
-      cancelBtn.style.display  = 'inline-flex';
-      cancelBtn.disabled    = false;
+      cancelRequested = false;
+      submitBtn.disabled = true;
+      cancelBtn.style.display = 'inline-flex';
+      cancelBtn.disabled = false;
       cancelBtn.textContent = 'Cancel';
-      btnText.textContent   = 'Running…';
+      btnText.textContent = 'Running...';
       btnSpinner.style.display = 'inline-block';
       progressSection.style.display = 'block';
       progressBar.style.width = '0%';
       resultsSection.style.display = 'block';
 
-      const total      = selectedFiles.length;
+      const total = selectedFiles.length;
       const confThresh = confSlider.value;
-      const iouThresh  = iouSlider.value;
+      const iouThresh = iouSlider.value;
 
       for (let i = 0; i < total; i++) {
         if (cancelRequested) break;
 
         const file = selectedFiles[i];
-        progressStatus.textContent =
-          `Processing image ${i + 1} of ${total} — ${file.name}`;
+        progressStatus.textContent = `Processing image ${i + 1} of ${total} - ${file.name}`;
         progressBar.style.width = `${(i / total) * 100}%`;
 
         try {
           const fd = new FormData();
           fd.append('file', file);
           fd.append('conf_thresh', confThresh);
-          fd.append('iou_thresh',  iouThresh);
+          fd.append('iou_thresh', iouThresh);
 
           const res = await fetch(form.action, { method: 'POST', body: fd });
-          if (!res.ok) throw new Error(`Server error ${res.status} on ${file.name}`);
+          if (!res.ok) {
+            const errorPayload = await res.json().catch(() => null);
+            const detail = errorPayload?.detail || `Server error ${res.status}`;
+            throw new Error(`${detail} on ${file.name}`);
+          }
 
-          const count   = parseInt(res.headers.get('staves-count'), 10);
+          const count = parseInt(res.headers.get('staves-count'), 10);
           const blobUrl = URL.createObjectURL(await res.blob());
+          const existingIdx = results.findIndex((r) => r.filename === file.name);
 
-          const existingIdx = results.findIndex(r => r.filename === file.name);
           if (existingIdx !== -1) {
             results[existingIdx] = { filename: file.name, blobUrl, count };
             replaceResultCard(file.name, blobUrl, count, existingIdx);
@@ -244,6 +234,14 @@
             results.push({ filename: file.name, blobUrl, count });
             addResultCard(file.name, blobUrl, count, results.length - 1);
           }
+
+          upsertSessionRow({
+            timestamp: new Date().toLocaleString(),
+            filename: file.name,
+            predictedCount: count,
+            confThreshold: Number(confThresh).toFixed(2),
+            iouThreshold: Number(iouThresh).toFixed(2)
+          });
 
           progressBar.style.width = `${((i + 1) / total) * 100}%`;
         } catch (err) {
@@ -253,28 +251,25 @@
       }
 
       progressStatus.textContent = cancelRequested
-        ? `Cancelled — processed ${results.length} image(s)`
-        : `Done — ${total} image(s) processed`;
+        ? `Cancelled - processed ${results.length} image(s)`
+        : `Done - ${total} image(s) processed`;
 
-      submitBtn.disabled       = false;
-      btnText.textContent      = 'Run Detection';
+      submitBtn.disabled = false;
+      btnText.textContent = 'Run Detection';
       btnSpinner.style.display = 'none';
-      cancelBtn.style.display  = 'none';
-
-      await refreshTable();
+      cancelBtn.style.display = 'none';
     });
 
     cancelBtn.addEventListener('click', () => {
-      cancelRequested       = true;
-      cancelBtn.textContent = 'Cancelling…';
-      cancelBtn.disabled    = true;
+      cancelRequested = true;
+      cancelBtn.textContent = 'Cancelling...';
+      cancelBtn.disabled = true;
     });
 
-    // ── Result card ───────────────────────────────────────────────
     function addResultCard(filename, blobUrl, count, idx) {
       const grid = document.getElementById('resultsGrid');
       const card = document.createElement('div');
-      card.className  = 'result-card';
+      card.className = 'result-card';
       card.dataset.idx = idx;
 
       card.innerHTML = `
@@ -297,23 +292,25 @@
         triggerDownload(blobUrl, filename.replace(/\.[^.]+$/, '') + '_detected.jpg');
       });
 
-      // Fade-in
-      card.style.opacity   = '0';
+      card.style.opacity = '0';
       card.style.transform = 'translateY(8px)';
       grid.appendChild(card);
       card.offsetHeight;
       card.style.transition = 'opacity 0.3s ease, transform 0.3s ease';
-      card.style.opacity    = '1';
-      card.style.transform  = 'translateY(0)';
+      card.style.opacity = '1';
+      card.style.transform = 'translateY(0)';
     }
 
     function replaceResultCard(filename, blobUrl, count, idx) {
       const grid = document.getElementById('resultsGrid');
-      const old  = grid.querySelector(`.result-card[data-idx="${idx}"]`);
-      if (!old) { addResultCard(filename, blobUrl, count, idx); return; }
+      const old = grid.querySelector(`.result-card[data-idx="${idx}"]`);
+      if (!old) {
+        addResultCard(filename, blobUrl, count, idx);
+        return;
+      }
 
       const card = document.createElement('div');
-      card.className   = 'result-card';
+      card.className = 'result-card';
       card.dataset.idx = idx;
       card.innerHTML = `
         <div class="result-card-img-wrap">
@@ -334,12 +331,11 @@
         triggerDownload(blobUrl, filename.replace(/\.[^.]+$/, '') + '_detected.jpg');
       });
 
-      // Swap with a brief flash
       card.style.opacity = '0';
       grid.replaceChild(card, old);
       card.offsetHeight;
       card.style.transition = 'opacity 0.3s ease';
-      card.style.opacity    = '1';
+      card.style.opacity = '1';
     }
 
     function triggerDownload(url, filename) {
@@ -347,24 +343,130 @@
       a.click();
     }
 
-    // ── Download All ──────────────────────────────────────────────
+    function persistSessionRows() {
+      sessionStorage.setItem(SESSION_RESULTS_KEY, JSON.stringify(sessionRows));
+    }
+
+    function loadSessionRows() {
+      const raw = sessionStorage.getItem(SESSION_RESULTS_KEY);
+      if (!raw) return;
+
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          sessionRows = parsed;
+        }
+      } catch (err) {
+        console.warn('Failed to restore session results', err);
+        sessionRows = [];
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+
+    function upsertSessionRow(row) {
+      const existingIdx = sessionRows.findIndex((item) => item.filename === row.filename);
+      if (existingIdx !== -1) {
+        sessionRows[existingIdx] = row;
+      } else {
+        sessionRows.push(row);
+      }
+      persistSessionRows();
+      renderSessionTable();
+    }
+
+    function renderSessionTable() {
+      const wrap = document.getElementById('tableDiv');
+      if (!sessionRows.length) {
+        sessionTableSection.style.display = 'none';
+        wrap.innerHTML = '<p class="table-empty">No detections yet.</p>';
+        return;
+      }
+
+      sessionTableSection.style.display = 'block';
+      const rowsHtml = sessionRows.map((row) => `
+        <tr>
+          <td>${escapeHtml(row.timestamp)}</td>
+          <td>${escapeHtml(row.filename)}</td>
+          <td>${escapeHtml(row.predictedCount)}</td>
+          <td>${escapeHtml(row.confThreshold)}</td>
+          <td>${escapeHtml(row.iouThreshold)}</td>
+        </tr>
+      `).join('');
+
+      wrap.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Image</th>
+              <th>Count</th>
+              <th>Conf Threshold</th>
+              <th>IoU Threshold</th>
+            </tr>
+          </thead>
+          <tbody>${rowsHtml}</tbody>
+        </table>
+      `;
+    }
+
     document.getElementById('downloadAll').addEventListener('click', () => {
-      if (!results.length) { alert('No results yet.'); return; }
-      results.forEach((r, i) => setTimeout(() =>
-        triggerDownload(r.blobUrl, r.filename.replace(/\.[^.]+$/, '') + '_detected.jpg'),
-        i * 300
-      ));
+      if (!results.length) {
+        alert('No results yet.');
+        return;
+      }
+      results.forEach((r, i) => {
+        setTimeout(() => {
+          triggerDownload(r.blobUrl, r.filename.replace(/\.[^.]+$/, '') + '_detected.jpg');
+        }, i * 300);
+      });
     });
 
-    // ── Lightbox ──────────────────────────────────────────────────
-    const lightbox         = document.getElementById('lightbox');
+    document.getElementById('downloadCSV').addEventListener('click', () => {
+      if (!sessionRows.length) {
+        alert('No data to download.');
+        return;
+      }
+
+      const header = ['Timestamp', 'Image', 'Count', 'Conf Threshold', 'IoU Threshold'];
+      const csv = [
+        header.join(','),
+        ...sessionRows.map((row) => [
+          row.timestamp,
+          row.filename,
+          row.predictedCount,
+          row.confThreshold,
+          row.iouThreshold
+        ].map((value) => `"${String(value).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      triggerDownload(
+        URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
+        'session_detections.csv'
+      );
+    });
+
+    document.getElementById('clearTable').addEventListener('click', () => {
+      sessionRows = [];
+      persistSessionRows();
+      renderSessionTable();
+    });
+
+    const lightbox = document.getElementById('lightbox');
     const lightboxBackdrop = document.getElementById('lightboxBackdrop');
-    const lightboxImg      = document.getElementById('lightboxImg');
+    const lightboxImg = document.getElementById('lightboxImg');
     const lightboxFilename = document.getElementById('lightboxFilename');
-    const lightboxBadge    = document.getElementById('lightboxBadge');
-    const lightboxClose    = document.getElementById('lightboxClose');
-    const lightboxPrev     = document.getElementById('lightboxPrev');
-    const lightboxNext     = document.getElementById('lightboxNext');
+    const lightboxBadge = document.getElementById('lightboxBadge');
+    const lightboxClose = document.getElementById('lightboxClose');
+    const lightboxPrev = document.getElementById('lightboxPrev');
+    const lightboxNext = document.getElementById('lightboxNext');
 
     function openLightbox(idx) {
       lightboxIdx = idx;
@@ -379,10 +481,10 @@
     }
 
     function renderLightbox() {
-      const r = results[lightboxIdx];
-      lightboxImg.src            = r.blobUrl;
-      lightboxFilename.textContent = r.filename;
-      lightboxBadge.textContent  = `${r.count} stave${r.count !== 1 ? 's' : ''}`;
+      const result = results[lightboxIdx];
+      lightboxImg.src = result.blobUrl;
+      lightboxFilename.textContent = result.filename;
+      lightboxBadge.textContent = `${result.count} stave${result.count !== 1 ? 's' : ''}`;
       lightboxPrev.style.visibility = lightboxIdx > 0 ? 'visible' : 'hidden';
       lightboxNext.style.visibility = lightboxIdx < results.length - 1 ? 'visible' : 'hidden';
     }
@@ -390,47 +492,28 @@
     lightboxClose.addEventListener('click', closeLightbox);
     lightboxBackdrop.addEventListener('click', closeLightbox);
     lightboxPrev.addEventListener('click', () => {
-      if (lightboxIdx > 0) { lightboxIdx--; renderLightbox(); }
+      if (lightboxIdx > 0) {
+        lightboxIdx -= 1;
+        renderLightbox();
+      }
     });
     lightboxNext.addEventListener('click', () => {
-      if (lightboxIdx < results.length - 1) { lightboxIdx++; renderLightbox(); }
+      if (lightboxIdx < results.length - 1) {
+        lightboxIdx += 1;
+        renderLightbox();
+      }
     });
     document.addEventListener('keydown', (e) => {
       if (!lightbox.classList.contains('open')) return;
-      if (e.key === 'Escape')      closeLightbox();
-      if (e.key === 'ArrowLeft'  && lightboxIdx > 0)                  { lightboxIdx--; renderLightbox(); }
-      if (e.key === 'ArrowRight' && lightboxIdx < results.length - 1) { lightboxIdx++; renderLightbox(); }
-    });
-
-    // ── Table ─────────────────────────────────────────────────────
-    async function refreshTable() {
-      const html = await fetch('/table/').then(r => r.text());
-      const wrap = document.getElementById('tableDiv');
-      wrap.innerHTML = html.includes('<table')
-        ? html
-        : '<p class="table-empty">No detections yet.</p>';
-    }
-
-    document.getElementById('clearTable').addEventListener('click', async () => {
-      try {
-        const r = await fetch('/clear_table/', { method: 'POST' });
-        if (!r.ok) throw new Error('Failed to clear');
-        await refreshTable();
-      } catch (err) { alert('Error: ' + err.message); }
-    });
-
-    document.getElementById('downloadCSV').addEventListener('click', () => {
-      const table = document.querySelector('#tableDiv table');
-      if (!table) { alert('No data to download.'); return; }
-      const csv = Array.from(table.querySelectorAll('tr'))
-        .map(row => Array.from(row.querySelectorAll('th, td'))
-          .map(c => `"${c.textContent.trim()}"`)
-          .join(','))
-        .join('\n');
-      triggerDownload(
-        URL.createObjectURL(new Blob([csv], { type: 'text/csv' })),
-        'stave_detections.csv'
-      );
+      if (e.key === 'Escape') closeLightbox();
+      if (e.key === 'ArrowLeft' && lightboxIdx > 0) {
+        lightboxIdx -= 1;
+        renderLightbox();
+      }
+      if (e.key === 'ArrowRight' && lightboxIdx < results.length - 1) {
+        lightboxIdx += 1;
+        renderLightbox();
+      }
     });
 
     async function loadModelVersions() {
@@ -439,8 +522,7 @@
         if (!response.ok) throw new Error(`${response.status}`);
         const data = await response.json();
         document.getElementById('modelVersionInfo').textContent =
-          `Localizer: v${data.localizer.version} | ` +
-          `Counter: v${data.counter.version}`;
+          `Localizer: v${data.localizer.version} | Counter: v${data.counter.version}`;
       } catch (err) {
         console.warn('Failed to load model versions', err);
         document.getElementById('modelVersionInfo').textContent = 'Model versions: unavailable';
@@ -448,8 +530,9 @@
     }
 
     window.addEventListener('DOMContentLoaded', () => {
+      loadSessionRows();
+      renderSessionTable();
       loadModelVersions();
-      refreshTable();
     });
   </script>
 </body>

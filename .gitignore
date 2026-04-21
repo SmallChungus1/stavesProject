@@ -11,3 +11,4 @@ runs/*
 temp/*
 finetune_dataset/*
 pretrain_dataset/*
+*.db

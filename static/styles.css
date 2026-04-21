@@ -119,6 +119,39 @@ body {
   margin-bottom: 1.25rem;
 }
 
+.logs-toolbar {
+  align-items: flex-end;
+  gap: 1rem;
+}
+
+.logs-filters {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+}
+
+.filter-label {
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  color: var(--text-3);
+}
+
+.filter-select {
+  padding: 0.42rem 0.8rem;
+  background: var(--surface-2);
+  color: var(--text-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  font-family: var(--mono);
+  font-size: 0.72rem;
+  outline: none;
+}
+
+.filter-select:focus {
+  border-color: var(--accent);
+}
+
 /* ── Drop zone ───────────────────────────────────────────────────── */
 .drop-zone {
   border: 2px dashed var(--border);
@@ -661,7 +694,6 @@ body {
 }
 
 /* Hide pandas row-index column */
-#tableDiv table thead tr th:first-child,
 #tableDiv table tbody tr th,
 #logsTableDiv table tbody tr th { display: none; }
 
@@ -696,4 +728,6 @@ body {
   .results-grid { grid-template-columns: 1fr; }
   .lightbox-prev { left:  0.5rem; }
   .lightbox-next { right: 0.5rem; }
+  .logs-toolbar { align-items: stretch; }
+  .logs-filters { width: 100%; }
 }

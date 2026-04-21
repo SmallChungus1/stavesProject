@@ -79,6 +79,7 @@
 
   <script>
     let refreshInFlight = false;
+    const displayTimeZone = 'America/Chicago';
     const metricLabels = {
       latency_ms: 'Latency (ms)',
       predicted_count: 'Predicted Count',
@@ -89,6 +90,35 @@
       low_confidence_detections: 'Low Confidence Count',
       error_rate_pct: 'Error Rate (%)'
     };
+
+    function parseUtcSqlTimestamp(timestamp) {
+      return new Date(timestamp.replace(' ', 'T') + 'Z');
+    }
+
+    function formatChicagoTimestamp(timestamp) {
+      return new Intl.DateTimeFormat('en-US', {
+        timeZone: displayTimeZone,
+        year: 'numeric',
+        month: 'short',
+        day: '2-digit',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true,
+        timeZoneName: 'short'
+      }).format(parseUtcSqlTimestamp(timestamp));
+    }
+
+    function convertTableTimestampsToChicago() {
+      const rows = document.querySelectorAll('#logsTableDiv table tbody tr');
+      rows.forEach((row) => {
+        const firstCell = row.querySelector('td');
+        if (!firstCell) return;
+        const utcTimestamp = firstCell.textContent.trim();
+        if (!utcTimestamp) return;
+        firstCell.textContent = formatChicagoTimestamp(utcTimestamp);
+      });
+    }
 
     function buildLogsDataQuery() {
       const params = new URLSearchParams({
@@ -135,8 +165,9 @@
 
       if (rawPoints.length) {
         traces.push({
-          x: rawPoints.map((point) => point.timestamp),
+          x: rawPoints.map((point) => parseUtcSqlTimestamp(point.timestamp)),
           y: rawPoints.map((point) => point.value),
+          customdata: rawPoints.map((point) => formatChicagoTimestamp(point.timestamp)),
           type: 'scatter',
           mode: 'markers',
           name: 'Raw Points',
@@ -146,15 +177,16 @@
             size: 6
           },
           hovertemplate: isErrorRate
-            ? '%{x}<br>Error Rate: %{y:.2f}%<extra></extra>'
-            : `%{x}<br>${label}: %{y:.4f}<extra></extra>`
+            ? '%{customdata}<br>Error Rate: %{y:.2f}%<extra></extra>'
+            : `%{customdata}<br>${label}: %{y:.4f}<extra></extra>`
         });
       }
 
       if (aggregatePoints.length) {
         traces.push({
-          x: aggregatePoints.map((point) => point.timestamp),
+          x: aggregatePoints.map((point) => parseUtcSqlTimestamp(point.timestamp)),
           y: aggregatePoints.map((point) => point.value),
+          customdata: aggregatePoints.map((point) => formatChicagoTimestamp(point.timestamp)),
           type: 'scatter',
           mode: 'lines',
           name: payload.aggregate_label || 'Aggregate',
@@ -164,8 +196,8 @@
             width: 3
           },
           hovertemplate: isErrorRate
-            ? '%{x}<br>Daily Error Rate: %{y:.2f}%<extra></extra>'
-            : `%{x}<br>${payload.aggregate_label || 'Daily Aggregate'}: %{y:.4f}<extra></extra>`
+            ? '%{customdata}<br>Daily Error Rate: %{y:.2f}%<extra></extra>'
+            : `%{customdata}<br>${payload.aggregate_label || 'Daily Aggregate'}: %{y:.4f}<extra></extra>`
         });
       }
 
@@ -205,6 +237,7 @@
       try {
         const payload = await fetch(buildLogsDataQuery(), { cache: 'no-store' }).then((r) => r.json());
         document.getElementById('logsTableDiv').innerHTML = payload.table_html;
+        convertTableTimestampsToChicago();
         renderPlot(payload);
       } finally {
         refreshInFlight = false;

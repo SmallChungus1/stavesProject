@@ -8,6 +8,10 @@
 #   OCI_VM_HOST                 — Public IP of the OCI VM
 #   OCI_VM_USER                 — SSH user (ex: opc)
 #   OCI_SSH_KEY                 — Private SSH key contents
+#   LOGS_BASIC_AUTH_USER        — Username for logs dashboard basic auth
+#   LOGS_BASIC_AUTH_PASSWORD    — Password for logs dashboard basic auth
+#   LOG_DB_PATH                 — SQLite database path inside the container
+#   LOG_MOUNT_PATH              — Host directory to mount for SQLite persistence
 
 name: CI/CD
 
@@ -85,7 +89,7 @@ jobs:
           host:     ${{ secrets.OCI_VM_HOST }}
           username: ${{ secrets.OCI_VM_USER }}
           key:      ${{ secrets.OCI_SSH_KEY }}
-          envs:     OCI_REGISTRY_USERNAME,OCI_AUTH_TOKEN,REGISTRY,REGISTRY_NAMESPACE,IMAGE_NAME
+          envs:     OCI_REGISTRY_USERNAME,OCI_AUTH_TOKEN,REGISTRY,REGISTRY_NAMESPACE,IMAGE_NAME,LOGS_BASIC_AUTH_USER,LOGS_BASIC_AUTH_PASSWORD,LOG_DB_PATH,LOG_MOUNT_PATH
           script: |
             docker login "$REGISTRY" \
               -u "$OCI_REGISTRY_USERNAME" \
@@ -93,10 +97,15 @@ jobs:
             docker pull "$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:latest"
             docker stop "$IMAGE_NAME" || true
             docker rm   "$IMAGE_NAME" || true
+            mkdir -p "$LOG_MOUNT_PATH"
             docker run -d \
               --name "$IMAGE_NAME" \
               --restart unless-stopped \
               -p 8000:8000 \
+              -e LOG_DB_PATH="$LOG_DB_PATH" \
+              -e LOGS_BASIC_AUTH_USER="$LOGS_BASIC_AUTH_USER" \
+              -e LOGS_BASIC_AUTH_PASSWORD="$LOGS_BASIC_AUTH_PASSWORD" \
+              -v "$LOG_MOUNT_PATH:$(dirname "$LOG_DB_PATH")" \
               "$REGISTRY/$REGISTRY_NAMESPACE/$IMAGE_NAME:latest"
             docker image prune -f
         env:
@@ -105,3 +114,7 @@ jobs:
           REGISTRY:              ${{ env.OCI_REGION }}.ocir.io
           REGISTRY_NAMESPACE:    ${{ env.REGISTRY_NAMESPACE }}
           IMAGE_NAME:            ${{ env.IMAGE_NAME }}
+          LOGS_BASIC_AUTH_USER:  ${{ secrets.LOGS_BASIC_AUTH_USER }}
+          LOGS_BASIC_AUTH_PASSWORD: ${{ secrets.LOGS_BASIC_AUTH_PASSWORD }}
+          LOG_DB_PATH:           ${{ secrets.LOG_DB_PATH }}
+          LOG_MOUNT_PATH:        ${{ secrets.LOG_MOUNT_PATH }}

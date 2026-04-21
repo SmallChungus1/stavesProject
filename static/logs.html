@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Inference Logs</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="header-brand">
+        <div>
+          <h1 class="header-title">Inference Logs</h1>
+          <p class="header-sub">SQLite-backed inference history</p>
+        </div>
+      </div>
+      <div class="header-actions">
+        <a class="btn-secondary header-link" href="/">Back to app</a>
+      </div>
+    </div>
+  </header>
+
+  <main class="main-content">
+    <section class="card">
+      <div class="section-header logs-toolbar">
+        <p class="card-title" style="margin:0">Inference Log Table</p>
+        <div class="logs-filters">
+          <label class="filter-label" for="timeRange">Time</label>
+          <select class="filter-select" id="timeRange">
+            <option value="24h" selected>Last 24 hours</option>
+            <option value="7d">Last 7 days</option>
+            <option value="30d">Last 30 days</option>
+            <option value="90d">Last 3 months</option>
+            <option value="365d">Last year</option>
+            <option value="all">All time</option>
+          </select>
+
+          <label class="filter-label" for="errorFilter">Status</label>
+          <select class="filter-select" id="errorFilter">
+            <option value="all" selected>All</option>
+            <option value="errors_only">Errors only</option>
+            <option value="success_only">Success only</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="table-wrap" id="logsTableDiv">
+        <p class="table-empty">No inference logs yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    let refreshInFlight = false;
+
+    function buildLogsQuery() {
+      const params = new URLSearchParams({
+        time_range: document.getElementById('timeRange').value,
+        error_filter: document.getElementById('errorFilter').value
+      });
+      return `/logs_table/?${params.toString()}`;
+    }
+
+    async function refreshLogsTable() {
+      if (refreshInFlight) return;
+      refreshInFlight = true;
+
+      try {
+        const html = await fetch(buildLogsQuery(), { cache: 'no-store' }).then((r) => r.text());
+        document.getElementById('logsTableDiv').innerHTML = html;
+      } finally {
+        refreshInFlight = false;
+      }
+    }
+
+    document.getElementById('timeRange').addEventListener('change', refreshLogsTable);
+    document.getElementById('errorFilter').addEventListener('change', refreshLogsTable);
+
+    window.addEventListener('DOMContentLoaded', refreshLogsTable);
+    window.addEventListener('focus', refreshLogsTable);
+    window.addEventListener('pageshow', refreshLogsTable);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') refreshLogsTable();
+    });
+  </script>
+</body>
+</html>

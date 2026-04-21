@@ -1,17 +1,27 @@
 import os
 import sqlite3
+from collections import defaultdict
 from datetime import datetime, timezone
 from html import escape
 
 
 DEFAULT_DB_PATH = "inference_logs.db"
 TIME_RANGE_MAP = {
-    "24h": "-1 day",
     "7d": "-7 days",
     "30d": "-30 days",
     "90d": "-90 days",
     "365d": "-365 days",
     "all": None,
+}
+
+PLOT_METRIC_COLUMNS = {
+    "latency_ms": "latency_ms",
+    "predicted_count": "predicted_count",
+    "mean_confidence": "mean_confidence",
+    "median_confidence": "median_confidence",
+    "min_confidence": "min_confidence",
+    "max_confidence": "max_confidence",
+    "low_confidence_detections": "low_confidence_detections",
 }
 
 
@@ -114,7 +124,7 @@ def insert_inference_log(record: dict, db_path: str | None = None) -> None:
 
 def query_inference_logs(
     *,
-    time_range: str = "24h",
+    time_range: str = "7d",
     error_filter: str = "all",
     limit: int = 500,
     db_path: str | None = None,
@@ -123,7 +133,7 @@ def query_inference_logs(
     conditions = []
     params: list[object] = []
 
-    range_modifier = TIME_RANGE_MAP.get(time_range, TIME_RANGE_MAP["24h"])
+    range_modifier = TIME_RANGE_MAP.get(time_range, TIME_RANGE_MAP["7d"])
     if range_modifier is not None:
         conditions.append("created_at >= datetime('now', ?)")
         params.append(range_modifier)
@@ -163,6 +173,97 @@ def query_inference_logs(
             """,
             params,
         ).fetchall()
+
+
+def build_plot_series(
+    rows: list[sqlite3.Row],
+    *,
+    metric: str,
+) -> dict[str, object]:
+    column = PLOT_METRIC_COLUMNS.get(metric)
+    ordered_rows = sorted(rows, key=lambda row: row["created_at"])
+
+    if metric == "error_rate_pct":
+        return {
+            "mode": "daily_aggregated",
+            "raw_points": [],
+            "aggregate_points": _build_error_rate_series(ordered_rows),
+            "aggregate_label": "Daily Error Rate",
+        }
+    if column is None:
+        raise ValueError(f"Unsupported plot metric '{metric}'")
+
+    raw_points = []
+    for row in ordered_rows:
+        value = row[column]
+        if value is None:
+            continue
+        raw_points.append({"timestamp": row["created_at"], "value": value})
+
+    return {
+        "mode": "raw_plus_daily_median",
+        "raw_points": raw_points,
+        "aggregate_points": _build_metric_aggregate_series(raw_points),
+        "aggregate_label": "Daily Median",
+    }
+
+
+def _parse_sql_timestamp(timestamp: str) -> datetime:
+    return datetime.strptime(timestamp, "%Y-%m-%d %H:%M:%S")
+
+
+def _bucket_timestamp(timestamp: str) -> str:
+    dt = _parse_sql_timestamp(timestamp)
+    return dt.replace(hour=0, minute=0, second=0, microsecond=0).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _build_metric_aggregate_series(points: list[dict[str, object]]) -> list[dict[str, object]]:
+    buckets: dict[str, list[float]] = defaultdict(list)
+
+    for point in points:
+        bucket = _bucket_timestamp(str(point["timestamp"]))
+        buckets[bucket].append(float(point["value"]))
+
+    aggregated = []
+    for bucket in sorted(buckets):
+        values = sorted(buckets[bucket])
+        midpoint = len(values) // 2
+        if len(values) % 2 == 0:
+            median = (values[midpoint - 1] + values[midpoint]) / 2
+        else:
+            median = values[midpoint]
+        aggregated.append({"timestamp": bucket, "value": round(median, 4)})
+
+    return aggregated
+
+
+def _build_error_rate_series(
+    rows: list[sqlite3.Row],
+) -> list[dict[str, object]]:
+    buckets: dict[str, dict[str, int]] = defaultdict(lambda: {"total_requests": 0, "error_requests": 0})
+
+    for row in rows:
+        bucket = _bucket_timestamp(row["created_at"])
+        bucket_entry = buckets[bucket]
+        bucket_entry["total_requests"] += 1
+        if row["error_message"] is not None and str(row["error_message"]).strip():
+            bucket_entry["error_requests"] += 1
+
+    points = []
+    for bucket in sorted(buckets):
+        total_requests = buckets[bucket]["total_requests"]
+        error_requests = buckets[bucket]["error_requests"]
+        error_rate_pct = round((100.0 * error_requests / total_requests), 4) if total_requests else 0.0
+        points.append(
+            {
+                "timestamp": bucket,
+                "value": error_rate_pct,
+                "total_requests": total_requests,
+                "error_requests": error_requests,
+            }
+        )
+
+    return points
 
 
 def _format_cell(value: object) -> str:

@@ -8,6 +8,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/static/styles.css">
+  <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 </head>
 <body>
   <header class="site-header">
@@ -27,12 +28,23 @@
   <main class="main-content">
     <section class="card">
       <div class="section-header logs-toolbar">
-        <p class="card-title" style="margin:0">Inference Log Table</p>
+        <p class="card-title" style="margin:0">Inference Metrics</p>
         <div class="logs-filters">
+          <label class="filter-label" for="metricSelect">Metric</label>
+          <select class="filter-select" id="metricSelect">
+            <option value="latency_ms" selected>Latency (ms)</option>
+            <option value="predicted_count">Predicted Count</option>
+            <option value="mean_confidence">Mean Confidence</option>
+            <option value="median_confidence">Median Confidence</option>
+            <option value="min_confidence">Min Confidence</option>
+            <option value="max_confidence">Max Confidence</option>
+            <option value="low_confidence_detections">Low Confidence Count</option>
+            <option value="error_rate_pct">Error Rate (%)</option>
+          </select>
+
           <label class="filter-label" for="timeRange">Time</label>
           <select class="filter-select" id="timeRange">
-            <option value="24h" selected>Last 24 hours</option>
-            <option value="7d">Last 7 days</option>
+            <option value="7d" selected>Last 7 days</option>
             <option value="30d">Last 30 days</option>
             <option value="90d">Last 3 months</option>
             <option value="365d">Last year</option>
@@ -48,6 +60,17 @@
         </div>
       </div>
 
+      <div class="plot-panel">
+        <div class="plot-meta">
+          <p class="plot-title" id="plotTitle">Latency (ms)</p>
+          <p class="plot-subtitle" id="plotSubtitle">Daily Median</p>
+        </div>
+        <div id="logsPlotDiv" class="plotly-chart"></div>
+      </div>
+
+      <div class="section-header logs-table-header">
+        <p class="card-title" style="margin:0">Inference Log Table</p>
+      </div>
       <div class="table-wrap" id="logsTableDiv">
         <p class="table-empty">No inference logs yet.</p>
       </div>
@@ -56,35 +79,147 @@
 
   <script>
     let refreshInFlight = false;
+    const metricLabels = {
+      latency_ms: 'Latency (ms)',
+      predicted_count: 'Predicted Count',
+      mean_confidence: 'Mean Confidence',
+      median_confidence: 'Median Confidence',
+      min_confidence: 'Min Confidence',
+      max_confidence: 'Max Confidence',
+      low_confidence_detections: 'Low Confidence Count',
+      error_rate_pct: 'Error Rate (%)'
+    };
 
-    function buildLogsQuery() {
+    function buildLogsDataQuery() {
       const params = new URLSearchParams({
+        metric: document.getElementById('metricSelect').value,
         time_range: document.getElementById('timeRange').value,
         error_filter: document.getElementById('errorFilter').value
       });
-      return `/logs_table/?${params.toString()}`;
+      return `/logs_data/?${params.toString()}`;
     }
 
-    async function refreshLogsTable() {
+    function renderEmptyPlot(message) {
+      document.getElementById('plotTitle').textContent = metricLabels[document.getElementById('metricSelect').value];
+      document.getElementById('plotSubtitle').textContent = message;
+      Plotly.react('logsPlotDiv', [], {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 48, r: 20, t: 12, b: 40 },
+        xaxis: { visible: false },
+        yaxis: { visible: false },
+        annotations: [{
+          text: 'No data for the selected filters',
+          showarrow: false,
+          font: { color: '#8b949e', family: 'Inter, sans-serif', size: 13 }
+        }]
+      }, { responsive: true, displayModeBar: false });
+    }
+
+    function renderPlot(payload) {
+      const metric = payload.metric;
+      const label = metricLabels[metric] || metric;
+      const isErrorRate = metric === 'error_rate_pct';
+      const rawPoints = payload.raw_points || [];
+      const aggregatePoints = payload.aggregate_points || [];
+
+      document.getElementById('plotTitle').textContent = label;
+      document.getElementById('plotSubtitle').textContent = payload.aggregate_label || 'Daily aggregation';
+
+      if (!rawPoints.length && !aggregatePoints.length) {
+        renderEmptyPlot(document.getElementById('plotSubtitle').textContent);
+        return;
+      }
+
+      const traces = [];
+
+      if (rawPoints.length) {
+        traces.push({
+          x: rawPoints.map((point) => point.timestamp),
+          y: rawPoints.map((point) => point.value),
+          type: 'scatter',
+          mode: 'markers',
+          name: 'Raw Points',
+          showlegend: false,
+          marker: {
+            color: isErrorRate ? 'rgba(248, 81, 73, 0.35)' : 'rgba(88, 166, 255, 0.35)',
+            size: 6
+          },
+          hovertemplate: isErrorRate
+            ? '%{x}<br>Error Rate: %{y:.2f}%<extra></extra>'
+            : `%{x}<br>${label}: %{y:.4f}<extra></extra>`
+        });
+      }
+
+      if (aggregatePoints.length) {
+        traces.push({
+          x: aggregatePoints.map((point) => point.timestamp),
+          y: aggregatePoints.map((point) => point.value),
+          type: 'scatter',
+          mode: 'lines',
+          name: payload.aggregate_label || 'Aggregate',
+          showlegend: false,
+          line: {
+            color: isErrorRate ? 'rgba(248, 81, 73, 0.95)' : 'rgba(88, 166, 255, 0.95)',
+            width: 3
+          },
+          hovertemplate: isErrorRate
+            ? '%{x}<br>Daily Error Rate: %{y:.2f}%<extra></extra>'
+            : `%{x}<br>${payload.aggregate_label || 'Daily Aggregate'}: %{y:.4f}<extra></extra>`
+        });
+      }
+
+      const layout = {
+        paper_bgcolor: 'rgba(0,0,0,0)',
+        plot_bgcolor: 'rgba(0,0,0,0)',
+        margin: { l: 56, r: 20, t: 12, b: 40 },
+        hovermode: 'x unified',
+        xaxis: {
+          color: '#8b949e',
+          gridcolor: 'rgba(139, 148, 158, 0.12)',
+          zerolinecolor: 'rgba(139, 148, 158, 0.12)'
+        },
+        yaxis: {
+          title: label,
+          color: '#8b949e',
+          gridcolor: 'rgba(139, 148, 158, 0.12)',
+          zerolinecolor: 'rgba(139, 148, 158, 0.12)',
+          ticksuffix: isErrorRate ? '%' : ''
+        },
+        font: {
+          color: '#e6edf3',
+          family: 'Inter, sans-serif'
+        }
+      };
+
+      Plotly.react('logsPlotDiv', traces, layout, {
+        responsive: true,
+        displayModeBar: false
+      });
+    }
+
+    async function refreshLogsView() {
       if (refreshInFlight) return;
       refreshInFlight = true;
 
       try {
-        const html = await fetch(buildLogsQuery(), { cache: 'no-store' }).then((r) => r.text());
-        document.getElementById('logsTableDiv').innerHTML = html;
+        const payload = await fetch(buildLogsDataQuery(), { cache: 'no-store' }).then((r) => r.json());
+        document.getElementById('logsTableDiv').innerHTML = payload.table_html;
+        renderPlot(payload);
       } finally {
         refreshInFlight = false;
       }
     }
 
-    document.getElementById('timeRange').addEventListener('change', refreshLogsTable);
-    document.getElementById('errorFilter').addEventListener('change', refreshLogsTable);
+    document.getElementById('metricSelect').addEventListener('change', refreshLogsView);
+    document.getElementById('timeRange').addEventListener('change', refreshLogsView);
+    document.getElementById('errorFilter').addEventListener('change', refreshLogsView);
 
-    window.addEventListener('DOMContentLoaded', refreshLogsTable);
-    window.addEventListener('focus', refreshLogsTable);
-    window.addEventListener('pageshow', refreshLogsTable);
+    window.addEventListener('DOMContentLoaded', refreshLogsView);
+    window.addEventListener('focus', refreshLogsView);
+    window.addEventListener('pageshow', refreshLogsView);
     document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'visible') refreshLogsTable();
+      if (document.visibilityState === 'visible') refreshLogsView();
     });
   </script>
 </body>
